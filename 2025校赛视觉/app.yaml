@@ -1,0 +1,11 @@
+id: diansai25e
+name: 电赛25eV1.0
+version: 1.0.0
+author: LLL
+icon: app.png
+desc: 25EV1.0
+files:
+  - find_circle.py
+  - main.py
+  - pid_util.py
+  - stepper_driver.py
