@@ -94,16 +94,19 @@ class MaixCamLink:
         baudrate=115200,
         period_us=5000,
         target_timeout_ms=200,
+        attitude_source=None,
     ):
         self._tx_pin = tx_pin
         self._device = device
         self._baudrate = baudrate
         self._period_us = period_us
         self._target_timeout_ms = target_timeout_ms
+        self._attitude_source = attitude_source
 
         self._vision_frame = 0
         self._target_snapshot = None
         self._stats = (0, 0, 0)  # sent attempts, write errors, skipped slots
+        self._imu_stats = (0, 0, False)  # 采样次数、错误数、校准是否有效
         self._started = False
         self._serial = None
         self._time = None
@@ -128,6 +131,7 @@ class MaixCamLink:
         self._time = time
         self._app = app
         self._started = True
+        self._start_attitude_source()
 
         worker = thread.Thread(self._tx_worker)
         self._thread = worker
@@ -150,6 +154,45 @@ class MaixCamLink:
         """Return sent attempts, UART write errors and skipped 5 ms slots."""
         return self._stats
 
+    def get_imu_stats(self):
+        """返回 IMU 采样次数、错误数和校准是否有效。"""
+        return self._imu_stats
+
+    def _start_attitude_source(self):
+        if self._attitude_source is None:
+            return False
+
+        samples, errors, _ = self._imu_stats
+        try:
+            calibrated = bool(self._attitude_source.start())
+        except Exception as exc:
+            self._imu_stats = (samples, errors + 1, False)
+            print("[imu] initialization failed:", exc)
+            return False
+
+        self._imu_stats = (samples, errors, calibrated)
+        if not calibrated:
+            print("[imu] calibration not found; IMU fields are disabled")
+        return calibrated
+
+    def _read_attitude_fields(self):
+        if self._attitude_source is None:
+            return (0, 0, 0, 0, 0)
+
+        samples, errors, calibrated = self._imu_stats
+        try:
+            fields = self._attitude_source.sample()
+            samples += 1
+            calibrated = bool(self._attitude_source.is_calibrated())
+            self._imu_stats = (samples, errors, calibrated)
+            return fields
+        except Exception as exc:
+            errors += 1
+            self._imu_stats = (samples, errors, calibrated)
+            if errors == 1 or errors % 200 == 0:
+                print("[imu] sample exception:", exc)
+            return (0, 0, 0, 0, 0)
+
     def _tx_worker(self, _):
         packet_sequence = 0
         sent_count = 0
@@ -168,13 +211,24 @@ class MaixCamLink:
                 timestamp_ms,
                 self._target_timeout_ms,
             )
+            (
+                yaw_rate_x10,
+                pitch_rate_x10,
+                yaw_angle_x100,
+                pitch_angle_x100,
+                imu_flags,
+            ) = self._read_attitude_fields()
             frame = build_frame(
                 packet_sequence=packet_sequence,
                 vision_frame=vision_frame,
                 timestamp_ms=timestamp_ms,
                 x_error=x_error,
                 y_error=y_error,
-                flags=flags,
+                yaw_rate_x10=yaw_rate_x10,
+                pitch_rate_x10=pitch_rate_x10,
+                yaw_angle_x100=yaw_angle_x100,
+                pitch_angle_x100=pitch_angle_x100,
+                flags=flags | imu_flags,
             )
 
             try:

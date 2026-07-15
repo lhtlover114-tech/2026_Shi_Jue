@@ -1,5 +1,6 @@
 import ast
 import importlib.util
+import inspect
 import struct
 import unittest
 from pathlib import Path
@@ -9,6 +10,34 @@ ROOT = Path(__file__).resolve().parents[1]
 MODEL3_DIR = ROOT / "模型3"
 LINK_PATH = MODEL3_DIR / "maixcam_link.py"
 MAIN_PATH = MODEL3_DIR / "main.py"
+
+
+class FakeAttitudeSource:
+    def __init__(self, sample, calibrated=True):
+        self._sample = sample
+        self._calibrated = calibrated
+        self.start_calls = 0
+
+    def start(self):
+        self.start_calls += 1
+        return self._calibrated
+
+    def sample(self):
+        return self._sample
+
+    def is_calibrated(self):
+        return self._calibrated
+
+
+class FailingAttitudeSource:
+    def start(self):
+        raise RuntimeError("imu init failed")
+
+    def sample(self):
+        raise RuntimeError("imu sample failed")
+
+    def is_calibrated(self):
+        return False
 
 
 def load_link_module():
@@ -101,6 +130,103 @@ class Model3MaixCamLinkTests(unittest.TestCase):
             link.resolve_target_snapshot(None, 1200, 200),
             (0, 0, 0, 0),
         )
+
+    def test_optional_attitude_source_keeps_existing_stats_contract(self):
+        link = load_link_module()
+        self.assertIn(
+            "attitude_source",
+            inspect.signature(link.MaixCamLink).parameters,
+        )
+        instance = link.MaixCamLink(attitude_source=None)
+
+        self.assertEqual(instance.get_stats(), (0, 0, 0))
+        self.assertEqual(instance.get_imu_stats(), (0, 0, False))
+
+    def test_uart_worker_merges_attitude_sample_into_existing_frame(self):
+        link = load_link_module()
+        self.assertIn(
+            "attitude_source",
+            inspect.signature(link.MaixCamLink).parameters,
+        )
+        source = FakeAttitudeSource(
+            (
+                111,
+                -222,
+                3333,
+                -4444,
+                link.FLAG_IMU_VALID | link.FLAG_ATTITUDE_VALID,
+            )
+        )
+        instance = link.MaixCamLink(attitude_source=source)
+
+        class FakeApp:
+            def __init__(self):
+                self.calls = 0
+
+            def need_exit(self):
+                self.calls += 1
+                return self.calls > 1
+
+        class FakeTime:
+            @staticmethod
+            def ticks_us():
+                return 0
+
+            @staticmethod
+            def ticks_ms():
+                return 1000
+
+            @staticmethod
+            def sleep_us(_):
+                return None
+
+        class FakeSerial:
+            def __init__(self):
+                self.frames = []
+
+            def write(self, frame):
+                self.frames.append(frame)
+                return len(frame)
+
+        serial = FakeSerial()
+        instance._app = FakeApp()
+        instance._time = FakeTime()
+        instance._serial = serial
+        instance._tx_worker(None)
+
+        self.assertEqual(len(serial.frames), 1)
+        fields = struct.unpack("<BBBBHHIhhhhhhH", serial.frames[0][:26])
+        self.assertEqual(fields[9:13], (111, -222, 3333, -4444))
+        self.assertEqual(
+            fields[13],
+            link.FLAG_IMU_VALID | link.FLAG_ATTITUDE_VALID,
+        )
+        self.assertEqual(instance.get_imu_stats(), (1, 0, True))
+
+    def test_attitude_exception_degrades_only_imu_fields(self):
+        link = load_link_module()
+        self.assertIn(
+            "attitude_source",
+            inspect.signature(link.MaixCamLink).parameters,
+        )
+        instance = link.MaixCamLink(attitude_source=FailingAttitudeSource())
+
+        self.assertEqual(
+            instance._read_attitude_fields(),
+            (0, 0, 0, 0, 0),
+        )
+        self.assertEqual(instance.get_imu_stats(), (0, 1, False))
+
+    def test_attitude_initialization_failure_does_not_raise(self):
+        link = load_link_module()
+        self.assertIn(
+            "attitude_source",
+            inspect.signature(link.MaixCamLink).parameters,
+        )
+        instance = link.MaixCamLink(attitude_source=FailingAttitudeSource())
+
+        self.assertFalse(instance._start_attitude_source())
+        self.assertEqual(instance.get_imu_stats(), (0, 1, False))
 
     def test_main_uses_find_circle_and_publishes_only_updated_results(self):
         text = MAIN_PATH.read_text(encoding="utf-8")
