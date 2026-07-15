@@ -14,7 +14,7 @@ REPORT_INTERVAL_MS = 1000
 def main():
     disp = display.Display()
     finder = FindRectCircle(disp)
-
+    #finder.debug_draw_rect = True
     # 绘制第三个圆的全部轮廓点耗时较高，控制器也不需要这些绘制结果。
     # 保留基本画面预览和中心误差线即可。
     finder.debug_draw_circle = False
