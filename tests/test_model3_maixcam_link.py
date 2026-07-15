@@ -233,10 +233,16 @@ class Model3MaixCamLinkTests(unittest.TestCase):
         tree = ast.parse(text)
 
         self.assertIn("from find_circle import FindRectCircle", text)
+        self.assertIn("from imu_attitude import ImuAttitude", text)
         self.assertIn("from maixcam_link import MaixCamLink", text)
         self.assertNotIn("nn.YOLO11", text)
         self.assertNotIn("detector.detect", text)
         self.assertIn("finder.debug_draw_circle = False", text)
+        self.assertIn("attitude = ImuAttitude()", text)
+        self.assertIn("attitude_source=attitude", text)
+        self.assertIn("link.get_imu_stats()", text)
+        self.assertNotIn("calib_gyro(", text)
+        self.assertNotIn("save_calib_gyro(", text)
 
         main_functions = [
             node
