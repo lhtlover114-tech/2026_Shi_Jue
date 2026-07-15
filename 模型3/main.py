@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Model 3 circle tracking with a 200 Hz MaixCAM2 -> MSPM0 link."""
+"""模型3圆心追踪，以及 MaixCAM2 到 MSPM0 的 200 Hz 通信链路。"""
 
 from maix import app, display, time
 
@@ -15,8 +15,8 @@ def main():
     disp = display.Display()
     finder = FindRectCircle(disp)
 
-    # Drawing every point on the third circle is expensive and is not needed
-    # by the controller. Keep the basic image preview and center-error line.
+    # 绘制第三个圆的全部轮廓点耗时较高，控制器也不需要这些绘制结果。
+    # 保留基本画面预览和中心误差线即可。
     finder.debug_draw_circle = False
 
     attitude = ImuAttitude()
@@ -28,8 +28,8 @@ def main():
         target_timeout_ms=200,
         attitude_source=attitude,
     )
-    # UART mapping/opening happens before the worker is detached. A failure
-    # therefore prevents the visual loop from entering a misleading run state.
+    # 先完成 UART 映射和打开，再启动独立发送线程。
+    # 如果 UART 初始化失败，视觉循环不会进入看似正常的运行状态。
     link.start()
 
     print("[+] Model 3 circle tracking started")

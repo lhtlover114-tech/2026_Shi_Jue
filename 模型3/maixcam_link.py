@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""MaixCAM2 -> MSPM0 fixed-frame vision link."""
+"""MaixCAM2 到 MSPM0 的固定帧视觉通信链路。"""
 
 import struct
 
@@ -27,7 +27,7 @@ def _clamp_int16(value):
 
 
 def crc16_ccitt_false(data):
-    """CRC-16/CCITT-FALSE: poly 0x1021, init 0xFFFF, xorout 0."""
+    """CRC-16/CCITT-FALSE：多项式 0x1021，初值 0xFFFF，结果异或值为 0。"""
     crc = 0xFFFF
     for byte in data:
         crc ^= byte << 8
@@ -51,7 +51,7 @@ def build_frame(
     pitch_angle_x100=0,
     flags=0,
 ):
-    """Build one 28-byte little-endian frame matching maixcam_link.c."""
+    """生成与 MSPM0 端 maixcam_link.c 匹配的 28 字节小端帧。"""
     payload = struct.pack(
         _FRAME_FORMAT,
         FRAME_HEADER_0,
@@ -73,7 +73,7 @@ def build_frame(
 
 
 def resolve_target_snapshot(snapshot, now_ms, timeout_ms):
-    """Return vision frame, X/Y and flags for the current send time."""
+    """根据当前发送时刻返回视觉帧号、X/Y 误差和标志位。"""
     if snapshot is None:
         return 0, 0, 0, 0
 
@@ -85,7 +85,7 @@ def resolve_target_snapshot(snapshot, now_ms, timeout_ms):
 
 
 class MaixCamLink:
-    """Own UART4 and transmit the latest vision snapshot at nominal 200 Hz."""
+    """独占 UART4，并以名义 200 Hz 发送最新视觉快照。"""
 
     def __init__(
         self,
@@ -105,7 +105,7 @@ class MaixCamLink:
 
         self._vision_frame = 0
         self._target_snapshot = None
-        self._stats = (0, 0, 0)  # sent attempts, write errors, skipped slots
+        self._stats = (0, 0, 0)  # 发送次数、写入错误数、跳过的周期数
         self._imu_stats = (0, 0, False)  # 采样次数、错误数、校准是否有效
         self._started = False
         self._serial = None
@@ -114,7 +114,7 @@ class MaixCamLink:
         self._thread = None
 
     def start(self):
-        """Map A21, open UART4, then start the detached transmit worker."""
+        """将 A21 映射为 UART4_TX，打开串口并启动独立发送线程。"""
         if self._started:
             return
 
@@ -124,7 +124,7 @@ class MaixCamLink:
             pinmap.set_pin_function(self._tx_pin, "UART4_TX"),
             "Failed to map {} to UART4_TX".format(self._tx_pin),
         )
-        # UART defaults are 8 data bits, no parity, 1 stop bit, no flow control.
+        # UART 默认配置为 8 位数据位、无校验、1 位停止位、无流控。
         serial = uart.UART(self._device, self._baudrate)
 
         self._serial = serial
@@ -138,7 +138,7 @@ class MaixCamLink:
         worker.detach()
 
     def publish_target(self, x_error, y_error):
-        """Publish one new valid visual measurement to the transmit worker."""
+        """向发送线程发布一组新的有效视觉测量值。"""
         if not self._started:
             raise RuntimeError("MaixCamLink.start() must be called first")
 
@@ -151,7 +151,7 @@ class MaixCamLink:
         )
 
     def get_stats(self):
-        """Return sent attempts, UART write errors and skipped 5 ms slots."""
+        """返回发送次数、UART 写入错误数和跳过的 5 ms 周期数。"""
         return self._stats
 
     def get_imu_stats(self):
@@ -252,4 +252,3 @@ class MaixCamLink:
                 skipped_slot_count += 1
 
             self._stats = (sent_count, write_error_count, skipped_slot_count)
-
