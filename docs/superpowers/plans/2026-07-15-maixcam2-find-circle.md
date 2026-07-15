@@ -163,7 +163,7 @@ Expected:
 - `Maixcam2/main.py` has no diff.
 - The no-index diff exits 1 only because it shows the intended MaixCAM2 model-loading block; no OpenCV pipeline changes appear.
 
-- [ ] **Step 6: Commit the port**
+- [x] **Step 6: Commit the port**
 
 ```powershell
 git add -- Maixcam2/find_circle.py tests/test_maixcam2_find_circle_port.py docs/superpowers/plans/2026-07-15-maixcam2-find-circle.md
