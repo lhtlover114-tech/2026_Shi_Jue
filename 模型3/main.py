@@ -24,7 +24,6 @@ def main():
         device="/dev/ttyS4",
         baudrate=UART_BAUDRATE,
         period_us=5000,
-        target_timeout_ms=200,
     )
     # 先完成 UART 映射和打开，再启动独立发送线程。
     # 如果 UART 初始化失败，视觉循环不会进入看似正常的运行状态。

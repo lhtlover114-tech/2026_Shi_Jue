@@ -83,18 +83,26 @@ class Model3VisionOnlyLinkTests(unittest.TestCase):
         self.assertEqual(fields[9:15], (6, 7, 8, 9, 10, 11))
         self.assertEqual(fields[15], link.FLAG_IMU_VALID)
 
-    def test_target_is_valid_before_timeout_and_cleared_at_timeout(self):
+    def test_target_keeps_last_value_without_timeout(self):
         link = load_link_module()
-        snapshot = (7, 12, -34, 1000)
+        snapshot = (7, 12, -34)
 
         self.assertEqual(
-            link.resolve_target_snapshot(snapshot, 1199, 200),
+            link.resolve_target_snapshot(snapshot),
             (7, 12, -34, link.FLAG_TARGET_VALID),
         )
-        self.assertEqual(
-            link.resolve_target_snapshot(snapshot, 1200, 200),
-            (7, 0, 0, 0),
-        )
+        self.assertEqual(link.resolve_target_snapshot(None), (0, 0, 0, 0))
+
+    def test_publish_target_replaces_held_value(self):
+        link = load_link_module()
+        instance = link.MaixCamLink()
+        instance._started = True
+
+        instance.publish_target(12, -34)
+        self.assertEqual(instance._target_snapshot, (1, 12, -34))
+
+        instance.publish_target(56, -78)
+        self.assertEqual(instance._target_snapshot, (2, 56, -78))
 
     def test_link_has_no_runtime_imu_source(self):
         link = load_link_module()
@@ -104,6 +112,10 @@ class Model3VisionOnlyLinkTests(unittest.TestCase):
             inspect.signature(link.MaixCamLink).parameters,
         )
         self.assertNotIn("imu_source", inspect.signature(link.MaixCamLink).parameters)
+        self.assertNotIn(
+            "target_timeout_ms",
+            inspect.signature(link.MaixCamLink).parameters,
+        )
         self.assertEqual(link.MaixCamLink().get_stats(), (0, 0, 0))
 
     def test_worker_sends_latest_target_with_zero_imu_fields(self):
@@ -143,7 +155,7 @@ class Model3VisionOnlyLinkTests(unittest.TestCase):
         instance._app = FakeApp()
         instance._time = FakeTime()
         instance._serial = serial
-        instance._target_snapshot = (9, 10, -11, 950)
+        instance._target_snapshot = (9, 10, -11)
         instance._tx_worker(None)
 
         fields = struct.unpack("<BBBBHHIhhhhhhhhH", serial.frames[0][:30])
@@ -160,6 +172,7 @@ class Model3VisionOnlyLinkTests(unittest.TestCase):
         self.assertNotIn("from imu_attitude import", text)
         self.assertNotIn("attitude_source=", text)
         self.assertNotIn("imu_source=", text)
+        self.assertNotIn("target_timeout_ms=", text)
         self.assertIn("UART_BAUDRATE = 460800", text)
         self.assertIn("finder.debug_draw_rect = True", text)
         self.assertIn("link.publish_target(x_error, y_error)", text)

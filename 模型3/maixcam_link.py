@@ -75,15 +75,12 @@ def build_frame(
     return payload + struct.pack("<H", crc16_ccitt_false(payload))
 
 
-def resolve_target_snapshot(snapshot, now_ms, timeout_ms):
+def resolve_target_snapshot(snapshot):
     """返回最新视觉帧号、X/Y误差和目标有效标志。"""
     if snapshot is None:
         return 0, 0, 0, 0
 
-    vision_frame, x_error, y_error, updated_ms = snapshot
-    age_ms = (int(now_ms) - int(updated_ms)) & 0xFFFFFFFF
-    if age_ms >= int(timeout_ms):
-        return vision_frame, 0, 0, 0
+    vision_frame, x_error, y_error = snapshot
     return vision_frame, x_error, y_error, FLAG_TARGET_VALID
 
 
@@ -96,13 +93,11 @@ class MaixCamLink:
         device="/dev/ttyS4",
         baudrate=460800,
         period_us=5000,
-        target_timeout_ms=200,
     ):
         self._tx_pin = tx_pin
         self._device = device
         self._baudrate = baudrate
         self._period_us = period_us
-        self._target_timeout_ms = target_timeout_ms
 
         self._vision_frame = 0
         self._target_snapshot = None
@@ -143,7 +138,6 @@ class MaixCamLink:
             self._vision_frame,
             _clamp_int16(x_error),
             _clamp_int16(y_error),
-            self._time.ticks_ms() & 0xFFFFFFFF,
         )
 
     def get_stats(self):
@@ -164,9 +158,7 @@ class MaixCamLink:
 
             timestamp_ms = self._time.ticks_ms() & 0xFFFFFFFF
             vision_frame, x_error, y_error, flags = resolve_target_snapshot(
-                self._target_snapshot,
-                timestamp_ms,
-                self._target_timeout_ms,
+                self._target_snapshot
             )
             frame = build_frame(
                 packet_sequence=packet_sequence,
