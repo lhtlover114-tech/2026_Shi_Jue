@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/34697/Desktop/电机小车/_2026电赛/_2026电赛视觉/**)",
+      "WebSearch",
+      "Read(//c/Users/34697/Desktop/电机小车/_2026电赛/_2026电赛视觉/Maixcam2/**)",
+      "Read(//c/Users/34697/Desktop/电机小车/_2026电赛/_2026电赛视觉/2025校赛视觉/**)",
+      "Read(//c/Users/34697/Desktop/电机小车/_2026电赛/_2026电赛视觉/docs/superpowers/specs/**)",
+      "Read(//c/Users/34697/Desktop/电机小车/_2026电赛/_2026电赛视觉/docs/superpowers/plans/**)",
+      "Read(//c/Users/34697/Desktop/电机小车/_2026电赛/_2026电赛视觉/tests/**)",
+      "Read(//c/Users/34697/Desktop/电机小车/_2026电赛/_2026电赛视觉/模型3_IMU_200Hz测试/**)",
+      "WebFetch(domain:en.wiki.sipeed.com)",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}

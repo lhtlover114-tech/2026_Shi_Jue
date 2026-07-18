@@ -54,7 +54,7 @@ class FindRectCircle:
 
     auto_awb = True                             # 自动白平衡或者手动白平衡
     awb_gain = [0.134, 0.0625, 0.0625, 0.1139]  # 手动白平衡，auto_awb为False才生效， R GR GB B 的值，调 R 和 B 即可
-    contrast = 80                               # 对比度，会影响到检测，阴影和圆圈痕迹都会更重（50为默认，原始值）
+    contrast =60                               # 对比度，会影响到检测，阴影和圆圈痕迹都会更重（50为默认，原始值）
 
     ###################################################################################
 
@@ -85,7 +85,7 @@ class FindRectCircle:
         if not self.auto_awb:
             self.cam.awb_mode(camera.AwbMode.Manual)
             self.cam.set_wb_gain(self.awb_gain)
-        #self.cam.constrast(self.contrast)
+        self.cam.constrast(self.contrast)
         # cam.set_windowing([448, 448])
 
         self._t = time.ticks_ms()
