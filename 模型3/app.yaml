@@ -1,9 +1,9 @@
 id: shibie_v0
 name: 识别矩形框
-version: 1.0.1
+version: 1.0.2
 author: LLL
 icon: app.png
-desc: 用于视觉25e举行框
+desc: 用于视觉25e举行框，优化opencv算法，以opencv为主
 files:
   - app.png
   - app.yaml
