@@ -1,0 +1,17 @@
+id: shibie_v0
+name: 识别矩形框
+version: 1.0.1
+author: LLL
+icon: app.png
+desc: 用于视觉25e举行框
+files:
+  - app.png
+  - app.yaml
+  - best_npu.axmodel
+  - best_vnpu.axmodel
+  - best.mud
+  - find_circle.py
+  - imu_attitude.py
+  - imu_calibration.py
+  - main.py
+  - maixcam_link.py
