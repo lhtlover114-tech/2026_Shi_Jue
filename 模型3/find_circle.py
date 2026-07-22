@@ -16,10 +16,13 @@ CAMERA_WARMUP_FRAMES = 20
 PROC_W = 320
 PROC_H = 240
 
-MIN_QUAD_AREA = 3500
-MAX_QUAD_AREA = 70000
-EDGE_MARGIN = 4
-MIN_EDGE_LENGTH_SQ = 30 * 30
+# K230 原始阈值在 640x480 下调校；移植到 320x240 处理帧时需要对应缩放：
+#   面积阈值 ×(320/640)×(240/480) = ×1/4
+#   长度阈值 ×min(320/640, 240/480)  = ×1/2
+MIN_QUAD_AREA = 800       # 原 3500，除以 4（远距目标约 800-1500 像素²）
+MAX_QUAD_AREA = 18000     # 原 70000，除以 4
+EDGE_MARGIN = 2           # 原 4，缩放到 320 画幅
+MIN_EDGE_LENGTH_SQ = 14 * 14  # 原 30²，边长阈值减半
 MAX_CORNER_COS_SQ = 60
 MAX_OPPOSITE_EDGE_RATIO = 4
 MIN_BBOX_FILL_PERCENT = 50
@@ -216,17 +219,39 @@ def border_is_white(binary):
 def detect_rectangle(frame_bgr):
     gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
+    # ---- 主路径：Otsu 全局阈值（适合中近距离、目标占比大）----
     otsu_level, normal_binary = cv2.threshold(
         gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU
     )
 
     if border_is_white(normal_binary):
-        _, binary = cv2.threshold(
+        _, otsu_binary = cv2.threshold(
             gray, otsu_level, 255, cv2.THRESH_BINARY_INV
         )
     else:
-        binary = normal_binary
-    return select_quad_from_binary(binary)
+        otsu_binary = normal_binary
+
+    result = select_quad_from_binary(otsu_binary)
+    if result is not None:
+        return result
+
+    # ---- 回退：自适应阈值（适合远距离、目标占比小的场景）----
+    # 当 Otsu 没找到目标时，很可能是目标在画面中占比太小，
+    # Otsu 被背景像素主导从而选错了阈值。此时用局部自适应阈值重试。
+    adaptive_binary = cv2.adaptiveThreshold(
+        gray,
+        255,
+        cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY_INV,
+        21,   # blockSize — 大于高斯核，覆盖足够上下文
+        9,    # C — 适当提高以抑制局部纹理噪声
+    )
+
+    if border_is_white(adaptive_binary):
+        adaptive_binary = cv2.bitwise_not(adaptive_binary)
+
+    return select_quad_from_binary(adaptive_binary)
 
 
 def scale_points(points, src_w, src_h, dst_w, dst_h):
@@ -288,7 +313,7 @@ class FindRectCircle:
 
     # 兼容旧移植契约；新的主路径固定使用 640x480 OpenCV 图像。
     hires_mode = False
-    model_path = "/root/models/_model25e_maixcam2/best.mud"
+    model_path = "/root/models/best.mud"
     model_dual_buff_mode = False
 
     def __init__(self, disp):
