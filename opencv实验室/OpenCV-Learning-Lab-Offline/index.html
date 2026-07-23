@@ -1,0 +1,2916 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>OpenCV 图片实验室 · 离线教学版</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --surface-strong: #eef3f8;
+      --text: #172033;
+      --text-soft: #5b667a;
+      --text-faint: #8892a5;
+      --line: #dfe5ee;
+      --line-strong: #cbd5e1;
+      --brand: #0f766e;
+      --brand-strong: #0b5f59;
+      --brand-soft: #dff7f3;
+      --accent: #2563eb;
+      --accent-soft: #e8f0ff;
+      --warning: #a16207;
+      --warning-soft: #fff7d6;
+      --danger: #b42318;
+      --danger-soft: #feeceb;
+      --success: #087443;
+      --success-soft: #dcfce7;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+      --shadow-md: 0 16px 45px rgba(30, 41, 59, 0.09);
+      --radius-sm: 10px;
+      --radius: 16px;
+      --radius-lg: 22px;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-width: 320px;
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% -10%, rgba(37, 99, 235, 0.09), transparent 28rem),
+        radial-gradient(circle at 100% 0%, rgba(15, 118, 110, 0.10), transparent 30rem),
+        var(--bg);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    [tabindex]:focus-visible {
+      outline: 3px solid rgba(37, 99, 235, 0.23);
+      outline-offset: 2px;
+    }
+
+    .app-shell {
+      width: min(1900px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 72px;
+      padding: 13px 16px 13px 18px;
+      border: 1px solid rgba(203, 213, 225, 0.9);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: var(--shadow-md);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand-block {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      gap: 13px;
+    }
+
+    .brand-mark {
+      display: grid;
+      flex: 0 0 auto;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      border-radius: 14px;
+      color: white;
+      background: linear-gradient(145deg, #0f766e, #2563eb);
+      box-shadow: 0 8px 22px rgba(15, 118, 110, 0.24);
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+    }
+
+    .brand-copy {
+      min-width: 0;
+    }
+
+    .brand-copy h1 {
+      margin: 0;
+      font-size: clamp(18px, 2vw, 24px);
+      line-height: 1.2;
+      letter-spacing: -0.025em;
+    }
+
+    .brand-copy p {
+      margin: 3px 0 0;
+      color: var(--text-soft);
+      font-size: 12px;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 9px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
+      gap: 8px;
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--text-soft);
+      background: var(--surface-soft);
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #94a3b8;
+      box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.14);
+    }
+
+    .status-pill[data-state="loading"] .status-dot {
+      background: #d97706;
+      box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.14);
+      animation: pulse 1.35s ease-in-out infinite;
+    }
+
+    .status-pill[data-state="ready"] {
+      border-color: #bbdfcb;
+      color: var(--success);
+      background: var(--success-soft);
+    }
+
+    .status-pill[data-state="ready"] .status-dot {
+      background: #16a34a;
+      box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.14);
+    }
+
+    .status-pill[data-state="error"] {
+      border-color: #fecaca;
+      color: var(--danger);
+      background: var(--danger-soft);
+    }
+
+    .status-pill[data-state="error"] .status-dot {
+      background: #dc2626;
+      box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.14);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.55; transform: scale(0.8); }
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      gap: 7px;
+      padding: 8px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 11px;
+      background: var(--surface);
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+      font-weight: 680;
+      transition: 150ms ease;
+      transition-property: transform, border-color, background, box-shadow, color;
+      white-space: nowrap;
+    }
+
+    .button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      border-color: #aab7c9;
+      background: #fbfdff;
+      box-shadow: 0 5px 14px rgba(15, 23, 42, 0.08);
+    }
+
+    .button:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .button:disabled {
+      cursor: not-allowed;
+      opacity: 0.48;
+    }
+
+    .button.primary {
+      border-color: var(--brand);
+      color: white;
+      background: var(--brand);
+    }
+
+    .button.primary:hover:not(:disabled) {
+      border-color: var(--brand-strong);
+      background: var(--brand-strong);
+    }
+
+    .button.soft {
+      border-color: #bfd7d4;
+      color: var(--brand-strong);
+      background: var(--brand-soft);
+    }
+
+    .button.small {
+      min-height: 32px;
+      padding: 5px 9px;
+      border-radius: 9px;
+      font-size: 12px;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(250px, 292px) minmax(480px, 1fr) minmax(320px, 390px);
+      align-items: start;
+      gap: 15px;
+      margin-top: 15px;
+    }
+
+    .panel {
+      border: 1px solid rgba(203, 213, 225, 0.92);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 15px 17px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #fbfcfe);
+    }
+
+    .panel-header h2,
+    .panel-header h3 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+
+    .panel-header p {
+      margin: 2px 0 0;
+      color: var(--text-faint);
+      font-size: 11px;
+    }
+
+    .control-panel,
+    .teaching-panel {
+      position: sticky;
+      top: 15px;
+      max-height: calc(100vh - 30px);
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #cbd5e1 transparent;
+    }
+
+    .control-panel::-webkit-scrollbar,
+    .teaching-panel::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .control-panel::-webkit-scrollbar-thumb,
+    .teaching-panel::-webkit-scrollbar-thumb {
+      border: 2px solid transparent;
+      border-radius: 99px;
+      background-clip: content-box;
+      background-color: #cbd5e1;
+    }
+
+    .control-body {
+      padding: 15px;
+    }
+
+    .upload-zone {
+      display: grid;
+      min-height: 108px;
+      place-items: center;
+      padding: 14px;
+      border: 1.5px dashed #9fb0c4;
+      border-radius: var(--radius);
+      text-align: center;
+      background: linear-gradient(145deg, #f8fbff, #f7fbfa);
+      cursor: pointer;
+      transition: 150ms ease;
+      transition-property: border-color, background, transform;
+    }
+
+    .upload-zone:hover,
+    .upload-zone.dragging {
+      border-color: var(--brand);
+      background: var(--brand-soft);
+      transform: translateY(-1px);
+    }
+
+    .upload-icon {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      margin: 0 auto 7px;
+      place-items: center;
+      border-radius: 11px;
+      color: var(--brand);
+      background: white;
+      box-shadow: var(--shadow-sm);
+      font-size: 19px;
+      font-weight: 800;
+    }
+
+    .upload-zone strong {
+      display: block;
+      font-size: 13px;
+    }
+
+    .upload-zone span {
+      display: block;
+      margin-top: 2px;
+      color: var(--text-faint);
+      font-size: 11px;
+    }
+
+    .privacy-note {
+      display: flex;
+      gap: 7px;
+      margin: 9px 2px 0;
+      color: var(--text-faint);
+      font-size: 11px;
+    }
+
+    .section-label {
+      margin: 18px 2px 8px;
+      color: var(--text-faint);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .operation-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .operation-button {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      align-items: center;
+      width: 100%;
+      gap: 10px;
+      padding: 9px 10px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      color: var(--text-soft);
+      text-align: left;
+      background: transparent;
+      cursor: pointer;
+      transition: 140ms ease;
+      transition-property: color, background, border-color, transform;
+    }
+
+    .operation-button:hover {
+      color: var(--text);
+      background: var(--surface-soft);
+      transform: translateX(2px);
+    }
+
+    .operation-button.active {
+      border-color: #b6dcd7;
+      color: var(--brand-strong);
+      background: var(--brand-soft);
+    }
+
+    .operation-icon {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--text-soft);
+      background: white;
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .operation-button.active .operation-icon {
+      border-color: #a9d8d2;
+      color: white;
+      background: var(--brand);
+    }
+
+    .operation-copy {
+      min-width: 0;
+    }
+
+    .operation-copy strong,
+    .operation-copy small {
+      display: block;
+    }
+
+    .operation-copy strong {
+      color: inherit;
+      font-size: 13px;
+    }
+
+    .operation-copy small {
+      margin-top: 1px;
+      overflow: hidden;
+      color: var(--text-faint);
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .operation-arrow {
+      color: #9aa6b8;
+      font-size: 15px;
+    }
+
+    .parameter-section {
+      margin-top: 15px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+
+    .parameter-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .parameter-heading h3 {
+      margin: 0;
+      font-size: 13px;
+    }
+
+    .controls-stack {
+      display: grid;
+      gap: 13px;
+    }
+
+    .control-group {
+      display: grid;
+      gap: 6px;
+    }
+
+    .control-label-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .control-label-row label {
+      font-size: 12px;
+      font-weight: 720;
+    }
+
+    .control-value {
+      padding: 2px 6px;
+      border-radius: 7px;
+      color: var(--brand-strong);
+      background: var(--brand-soft);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .control-help {
+      margin: 0;
+      color: var(--text-faint);
+      font-size: 10px;
+      line-height: 1.45;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 20px;
+      margin: 0;
+      accent-color: var(--brand);
+      cursor: pointer;
+    }
+
+    input[type="range"]:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    select {
+      width: 100%;
+      min-height: 36px;
+      padding: 7px 32px 7px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      color: var(--text);
+      background: white;
+      cursor: pointer;
+    }
+
+    select:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--surface-soft);
+    }
+
+    .checkbox-row input {
+      width: 16px;
+      height: 16px;
+      margin: 2px 0 0;
+      accent-color: var(--brand);
+    }
+
+    .checkbox-copy {
+      min-width: 0;
+    }
+
+    .checkbox-copy strong,
+    .checkbox-copy span {
+      display: block;
+    }
+
+    .checkbox-copy strong {
+      font-size: 12px;
+    }
+
+    .checkbox-copy span {
+      margin-top: 2px;
+      color: var(--text-faint);
+      font-size: 10px;
+    }
+
+    .stage-panel {
+      min-width: 0;
+      overflow: visible;
+      background: rgba(255, 255, 255, 0.84);
+    }
+
+    .stage-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 15px;
+      padding: 14px 17px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stage-title h2 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .stage-title p {
+      margin: 2px 0 0;
+      color: var(--text-faint);
+      font-size: 11px;
+    }
+
+    .stage-badges {
+      display: flex;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .mini-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 25px;
+      padding: 3px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--text-soft);
+      background: var(--surface-soft);
+      font-family: var(--mono);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .stage-body {
+      padding: 14px;
+    }
+
+    .canvas-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .canvas-card {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: white;
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .canvas-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 9px;
+      min-height: 43px;
+      padding: 9px 11px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfe;
+    }
+
+    .canvas-card-header strong {
+      font-size: 12px;
+    }
+
+    .canvas-meta {
+      overflow: hidden;
+      color: var(--text-faint);
+      font-family: var(--mono);
+      font-size: 9px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .canvas-viewport {
+      position: relative;
+      display: grid;
+      min-height: 330px;
+      max-height: 68vh;
+      place-items: center;
+      padding: 12px;
+      overflow: auto;
+      background:
+        linear-gradient(45deg, #edf1f6 25%, transparent 25%),
+        linear-gradient(-45deg, #edf1f6 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #edf1f6 75%),
+        linear-gradient(-45deg, transparent 75%, #edf1f6 75%),
+        #f8fafc;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+      background-size: 16px 16px;
+    }
+
+    .canvas-viewport canvas {
+      display: block;
+      max-width: 100%;
+      max-height: calc(68vh - 24px);
+      object-fit: contain;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+      image-rendering: auto;
+    }
+
+    .canvas-empty {
+      position: absolute;
+      inset: 12px;
+      display: grid;
+      place-items: center;
+      padding: 25px;
+      border: 1px dashed #b8c3d2;
+      border-radius: 12px;
+      color: var(--text-faint);
+      text-align: center;
+      background: rgba(248, 250, 252, 0.88);
+    }
+
+    .canvas-empty strong {
+      display: block;
+      color: var(--text-soft);
+      font-size: 13px;
+    }
+
+    .canvas-empty span {
+      display: block;
+      margin-top: 4px;
+      font-size: 11px;
+    }
+
+    .canvas-card.has-image .canvas-empty {
+      display: none;
+    }
+
+    .processing-overlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      place-items: center;
+      color: var(--brand-strong);
+      background: rgba(248, 250, 252, 0.82);
+      backdrop-filter: blur(3px);
+      z-index: 4;
+    }
+
+    .processing-overlay.visible {
+      display: grid;
+    }
+
+    .processing-box {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 10px 13px;
+      border: 1px solid #b8d9d5;
+      border-radius: 12px;
+      background: white;
+      box-shadow: var(--shadow-md);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #b8d9d5;
+      border-top-color: var(--brand);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .pixel-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 36px;
+      gap: 10px;
+      padding: 8px 11px;
+      border-top: 1px solid var(--line);
+      color: var(--text-faint);
+      background: #fbfcfe;
+      font-size: 10px;
+    }
+
+    .pixel-readout {
+      overflow: hidden;
+      color: var(--text-soft);
+      font-family: var(--mono);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pipeline-strip {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 12px;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: rgba(248, 250, 252, 0.85);
+    }
+
+    .pipeline-strip-label {
+      margin-right: 2px;
+      color: var(--text-faint);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .pipeline-step {
+      padding: 4px 8px;
+      border: 1px solid #cfd8e4;
+      border-radius: 8px;
+      color: var(--text-soft);
+      background: white;
+      font-family: var(--mono);
+      font-size: 10px;
+    }
+
+    .pipeline-arrow {
+      color: #9aa6b8;
+      font-size: 11px;
+    }
+
+    .error-banner {
+      display: none;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px solid #fecaca;
+      border-radius: 12px;
+      color: var(--danger);
+      background: var(--danger-soft);
+      font-size: 11px;
+    }
+
+    .error-banner.visible {
+      display: block;
+    }
+
+    .lesson-hero {
+      padding: 17px;
+      border-bottom: 1px solid var(--line);
+      background:
+        radial-gradient(circle at 100% 0, rgba(37, 99, 235, 0.09), transparent 15rem),
+        linear-gradient(145deg, #ffffff, #f8fbff);
+    }
+
+    .lesson-kicker {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .lesson-number {
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+    }
+
+    .lesson-function {
+      padding: 3px 7px;
+      border: 1px solid #cbd9ef;
+      border-radius: 7px;
+      color: #1d4ed8;
+      background: var(--accent-soft);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .lesson-hero h2 {
+      margin: 0;
+      font-size: 21px;
+      letter-spacing: -0.025em;
+    }
+
+    .lesson-summary {
+      margin: 7px 0 0;
+      color: var(--text-soft);
+      font-size: 12px;
+      line-height: 1.65;
+    }
+
+    .teaching-body {
+      padding: 0 16px 18px;
+    }
+
+    .teaching-section {
+      padding-top: 16px;
+    }
+
+    .teaching-section + .teaching-section {
+      margin-top: 15px;
+      border-top: 1px solid var(--line);
+    }
+
+    .teaching-section-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 9px;
+    }
+
+    .teaching-section h3 {
+      margin: 0;
+      font-size: 12px;
+      letter-spacing: -0.01em;
+    }
+
+    .concept-card,
+    .observe-card {
+      padding: 11px 12px;
+      border-radius: 12px;
+      color: var(--text-soft);
+      font-size: 11px;
+      line-height: 1.65;
+    }
+
+    .concept-card {
+      border: 1px solid #d9e4f7;
+      background: #f6f9ff;
+    }
+
+    .observe-card {
+      border: 1px solid #eadcae;
+      background: var(--warning-soft);
+    }
+
+    .observe-card strong {
+      color: var(--warning);
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+    }
+
+    .metric-card {
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--surface-soft);
+    }
+
+    .metric-card span,
+    .metric-card strong {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .metric-card span {
+      color: var(--text-faint);
+      font-size: 9px;
+      font-weight: 750;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .metric-card strong {
+      margin-top: 2px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .code-shell {
+      overflow: hidden;
+      border: 1px solid #27354a;
+      border-radius: 13px;
+      background: #101827;
+      box-shadow: 0 9px 24px rgba(15, 23, 42, 0.14);
+    }
+
+    .code-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border-bottom: 1px solid #28364c;
+      color: #94a3b8;
+      background: #152033;
+      font-size: 9px;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .code-dots {
+      display: flex;
+      gap: 5px;
+    }
+
+    .code-dots i {
+      display: block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #475569;
+    }
+
+    .copy-code-button {
+      padding: 3px 7px;
+      border: 1px solid #40516a;
+      border-radius: 7px;
+      color: #cbd5e1;
+      background: #1e293b;
+      cursor: pointer;
+      font-size: 9px;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    pre {
+      margin: 0;
+      overflow: auto;
+    }
+
+    code {
+      font-family: var(--mono);
+    }
+
+    #codeBlock {
+      display: block;
+      min-height: 190px;
+      padding: 13px;
+      color: #dce6f5;
+      font-size: 10.5px;
+      line-height: 1.62;
+      tab-size: 2;
+      white-space: pre;
+    }
+
+    .explanation-list {
+      display: grid;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .explanation-list li {
+      position: relative;
+      padding: 8px 9px 8px 27px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--text-soft);
+      background: var(--surface-soft);
+      font-size: 10.5px;
+      line-height: 1.55;
+    }
+
+    .explanation-list li::before {
+      position: absolute;
+      top: 8px;
+      left: 9px;
+      display: grid;
+      width: 13px;
+      height: 13px;
+      place-items: center;
+      border-radius: 50%;
+      color: white;
+      background: var(--brand);
+      content: "i";
+      font-family: Georgia, serif;
+      font-size: 8px;
+      font-style: italic;
+      font-weight: 700;
+    }
+
+    .contour-section {
+      display: none;
+    }
+
+    .contour-section.visible {
+      display: block;
+    }
+
+    .table-wrap {
+      max-height: 250px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9.5px;
+    }
+
+    th,
+    td {
+      padding: 7px 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    th:first-child,
+    td:first-child {
+      text-align: left;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      color: var(--text-faint);
+      background: #f8fafc;
+      font-size: 8.5px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .memory-ok {
+      color: var(--success) !important;
+    }
+
+    .toast-region {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      display: grid;
+      width: min(360px, calc(100vw - 36px));
+      gap: 8px;
+      z-index: 50;
+      pointer-events: none;
+    }
+
+    .toast {
+      padding: 11px 13px;
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      color: var(--text);
+      background: white;
+      box-shadow: 0 16px 50px rgba(15, 23, 42, 0.18);
+      font-size: 11px;
+      animation: toast-in 180ms ease-out both;
+    }
+
+    .toast.success {
+      border-color: #b7dfc7;
+      color: var(--success);
+      background: #f2fff7;
+    }
+
+    .toast.error {
+      border-color: #fecaca;
+      color: var(--danger);
+      background: #fff7f7;
+    }
+
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 1320px) {
+      .workspace {
+        grid-template-columns: 265px minmax(460px, 1fr);
+      }
+
+      .teaching-panel {
+        position: static;
+        grid-column: 1 / -1;
+        max-height: none;
+      }
+
+      .teaching-body {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0 20px;
+      }
+
+      .teaching-section + .teaching-section {
+        margin-top: 0;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .app-shell {
+        padding: 10px;
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 14px;
+      }
+
+      .topbar-right {
+        justify-content: flex-start;
+        width: 100%;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+        margin-top: 10px;
+      }
+
+      .control-panel,
+      .teaching-panel {
+        position: static;
+        max-height: none;
+      }
+
+      .canvas-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .canvas-viewport {
+        min-height: 280px;
+        max-height: none;
+      }
+
+      .canvas-viewport canvas {
+        max-height: none;
+      }
+
+      .teaching-body {
+        display: block;
+      }
+
+      .teaching-section + .teaching-section {
+        margin-top: 15px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .brand-copy p {
+        display: none;
+      }
+
+      .topbar-right .status-pill {
+        width: 100%;
+      }
+
+      .topbar-right .button {
+        flex: 1 1 auto;
+      }
+
+      .stage-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .canvas-viewport {
+        min-height: 230px;
+      }
+
+      .metric-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+    }
+  </style>
+</head>
+<body data-cv-ready="false" data-image-ready="false" data-processing="false">
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true">CV</div>
+        <div class="brand-copy">
+          <h1>OpenCV 图片实验室</h1>
+          <p>离线教学版 · 调参数、看效果、读代码，图片不会离开你的电脑</p>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="status-pill" id="cvStatus" data-state="loading" role="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="cvStatusText">正在加载 OpenCV…</span>
+        </div>
+        <button class="button soft" id="sampleButton" type="button">打开内置示例</button>
+        <button class="button" id="topUploadButton" type="button">选择图片</button>
+        <button class="button" id="clearButton" type="button" disabled>清空</button>
+        <button class="button primary" id="downloadButton" type="button" disabled>下载结果</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="panel control-panel" aria-label="实验与参数">
+        <div class="panel-header">
+          <div>
+            <h2>实验控制台</h2>
+            <p>每个实验都从原始图片开始</p>
+          </div>
+        </div>
+        <div class="control-body">
+          <input class="sr-only" id="fileInput" type="file" accept="image/*">
+          <div class="upload-zone" id="uploadZone" role="button" tabindex="0" aria-label="选择或拖入图片">
+            <div>
+              <div class="upload-icon" aria-hidden="true">＋</div>
+              <strong>点击选择或拖入图片</strong>
+              <span>支持浏览器可解码的 PNG、JPG、WebP、BMP 等格式</span>
+            </div>
+          </div>
+          <p class="privacy-note"><span aria-hidden="true">◉</span><span>所有处理均在浏览器内存中完成，不会上传图片。</span></p>
+
+          <div class="section-label">选择实验</div>
+          <nav class="operation-list" aria-label="OpenCV 实验列表">
+            <button class="operation-button active" type="button" data-operation="grayscale" aria-pressed="true">
+              <span class="operation-icon">G</span>
+              <span class="operation-copy"><strong>灰度化</strong><small>RGBA → 单通道亮度</small></span>
+              <span class="operation-arrow" aria-hidden="true">›</span>
+            </button>
+            <button class="operation-button" type="button" data-operation="gaussian" aria-pressed="false">
+              <span class="operation-icon">σ</span>
+              <span class="operation-copy"><strong>高斯模糊</strong><small>卷积核抑制细节与噪声</small></span>
+              <span class="operation-arrow" aria-hidden="true">›</span>
+            </button>
+            <button class="operation-button" type="button" data-operation="threshold" aria-pressed="false">
+              <span class="operation-icon">01</span>
+              <span class="operation-copy"><strong>二值化</strong><small>用阈值分开前景与背景</small></span>
+              <span class="operation-arrow" aria-hidden="true">›</span>
+            </button>
+            <button class="operation-button" type="button" data-operation="canny" aria-pressed="false">
+              <span class="operation-icon">∂</span>
+              <span class="operation-copy"><strong>Canny 边缘</strong><small>双阈值连接真实边缘</small></span>
+              <span class="operation-arrow" aria-hidden="true">›</span>
+            </button>
+            <button class="operation-button" type="button" data-operation="morphology" aria-pressed="false">
+              <span class="operation-icon">M</span>
+              <span class="operation-copy"><strong>形态学</strong><small>腐蚀、膨胀、开与闭</small></span>
+              <span class="operation-arrow" aria-hidden="true">›</span>
+            </button>
+            <button class="operation-button" type="button" data-operation="contours" aria-pressed="false">
+              <span class="operation-icon">C</span>
+              <span class="operation-copy"><strong>轮廓检测</strong><small>面积、周长与外接矩形</small></span>
+              <span class="operation-arrow" aria-hidden="true">›</span>
+            </button>
+          </nav>
+
+          <section class="parameter-section" aria-labelledby="parameterTitle">
+            <div class="parameter-heading">
+              <h3 id="parameterTitle">实验参数</h3>
+              <button class="button small" id="resetParamsButton" type="button">恢复默认</button>
+            </div>
+            <div class="controls-stack" id="controlsContainer"></div>
+          </section>
+        </div>
+      </aside>
+
+      <section class="panel stage-panel" aria-label="图片对比区">
+        <div class="stage-header">
+          <div class="stage-title">
+            <h2>原图与处理结果</h2>
+            <p id="imageName">尚未选择图片</p>
+          </div>
+          <div class="stage-badges">
+            <span class="mini-badge" id="sourceSizeBadge">原图 — × —</span>
+            <span class="mini-badge" id="resultTypeBadge">输出 —</span>
+            <span class="mini-badge" id="processState">等待图片</span>
+          </div>
+        </div>
+        <div class="stage-body">
+          <div class="canvas-grid">
+            <article class="canvas-card" id="sourceCard">
+              <div class="canvas-card-header">
+                <strong>原始图片</strong>
+                <span class="canvas-meta" id="sourceMeta">sourceCanvas</span>
+              </div>
+              <div class="canvas-viewport">
+                <canvas id="sourceCanvas" aria-label="原始图片画布"></canvas>
+                <div class="canvas-empty">
+                  <div><strong>这里显示原始图片</strong><span>先选择一张图片，或打开内置示例。</span></div>
+                </div>
+              </div>
+              <div class="pixel-bar">
+                <span>鼠标像素</span>
+                <span class="pixel-readout" id="sourcePixel">x: — · y: — · RGBA: —</span>
+              </div>
+            </article>
+
+            <article class="canvas-card" id="resultCard">
+              <div class="canvas-card-header">
+                <strong>处理结果</strong>
+                <span class="canvas-meta" id="resultMeta">resultCanvas</span>
+              </div>
+              <div class="canvas-viewport">
+                <canvas id="resultCanvas" aria-label="OpenCV 处理结果画布"></canvas>
+                <div class="canvas-empty">
+                  <div><strong>这里显示处理结果</strong><span>参数改变后将自动重新计算。</span></div>
+                </div>
+                <div class="processing-overlay" id="processingOverlay" aria-hidden="true">
+                  <div class="processing-box"><span class="spinner" aria-hidden="true"></span><span>OpenCV 正在处理…</span></div>
+                </div>
+              </div>
+              <div class="pixel-bar">
+                <span>鼠标像素</span>
+                <span class="pixel-readout" id="resultPixel">x: — · y: — · RGBA: —</span>
+              </div>
+            </article>
+          </div>
+
+          <div class="pipeline-strip" id="pipelineStrip" aria-label="当前处理流程"></div>
+          <div class="error-banner" id="errorBanner" role="alert"></div>
+        </div>
+      </section>
+
+      <aside class="panel teaching-panel" aria-label="教学说明">
+        <div class="lesson-hero">
+          <div class="lesson-kicker">
+            <span class="lesson-number" id="lessonNumber">实验 01 / 06</span>
+            <span class="lesson-function" id="lessonFunction">cv.cvtColor()</span>
+          </div>
+          <h2 id="lessonTitle">灰度化</h2>
+          <p class="lesson-summary" id="lessonSummary"></p>
+        </div>
+
+        <div class="teaching-body">
+          <section class="teaching-section">
+            <div class="teaching-section-heading"><h3>核心概念</h3></div>
+            <div class="concept-card" id="conceptCard"></div>
+          </section>
+
+          <section class="teaching-section">
+            <div class="teaching-section-heading"><h3>本次运行</h3><span class="mini-badge" id="runBadge">待运行</span></div>
+            <div class="metric-grid">
+              <div class="metric-card"><span>处理耗时</span><strong id="metricTime">—</strong></div>
+              <div class="metric-card"><span>输出矩阵</span><strong id="metricShape">—</strong></div>
+              <div class="metric-card"><span>矩阵类型</span><strong id="metricType">—</strong></div>
+              <div class="metric-card"><span>资源释放</span><strong id="metricMemory">—</strong></div>
+            </div>
+          </section>
+
+          <section class="teaching-section">
+            <div class="teaching-section-heading"><h3>对应代码</h3></div>
+            <div class="code-shell">
+              <div class="code-toolbar">
+                <span class="code-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span>JavaScript · OpenCV.js</span>
+                <button class="copy-code-button" id="copyCodeButton" type="button">复制代码</button>
+              </div>
+              <pre><code id="codeBlock"></code></pre>
+            </div>
+          </section>
+
+          <section class="teaching-section">
+            <div class="teaching-section-heading"><h3>参数与代码说明</h3></div>
+            <ul class="explanation-list" id="explanationList"></ul>
+          </section>
+
+          <section class="teaching-section">
+            <div class="teaching-section-heading"><h3>观察建议</h3></div>
+            <div class="observe-card" id="observeCard"></div>
+          </section>
+
+          <section class="teaching-section contour-section" id="contourSection">
+            <div class="teaching-section-heading"><h3>轮廓数据（面积前 20）</h3><span class="mini-badge" id="contourBadge">0 个</span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>#</th><th>面积</th><th>周长</th><th>外接框</th></tr></thead>
+                <tbody id="contourTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
+
+  <script>window.__opencvScriptError = false;</script>
+  <script src="./opencv.js" onerror="window.__opencvScriptError = true"></script>
+  <script>
+    'use strict';
+
+    // -------------------------------------------------------------------------
+    // 1. 页面状态与默认参数
+    // -------------------------------------------------------------------------
+
+    const $ = (selector, root = document) => root.querySelector(selector);
+    const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+    const DEFAULT_PARAMS = Object.freeze({
+      grayscale: {},
+      gaussian: { kernel: 7, sigma: 0 },
+      threshold: { value: 128, maxValue: 255, mode: 'binary' },
+      canny: { low: 50, high: 150, aperture: 3, blurKernel: 3, l2Gradient: false },
+      morphology: { mode: 'open', threshold: 128, invert: true, shape: 'rect', kernel: 5, iterations: 1 },
+      contours: { threshold: 128, invert: true, retrieval: 'external', minArea: 80, showBoxes: true, showLabels: true }
+    });
+
+    function cloneDefaults() {
+      return JSON.parse(JSON.stringify(DEFAULT_PARAMS));
+    }
+
+    const state = {
+      cvReady: false,
+      imageLoaded: false,
+      processing: false,
+      currentOperation: 'grayscale',
+      params: cloneDefaults(),
+      imageName: '',
+      processTimer: null,
+      lastReport: null,
+      lastObjectUrl: null,
+      cvVersion: '—'
+    };
+
+    const OPERATION_ORDER = ['grayscale', 'gaussian', 'threshold', 'canny', 'morphology', 'contours'];
+
+    const MORPHOLOGY_MODE = {
+      erode: { label: '腐蚀', constant: 'cv.erode', code: 'erode' },
+      dilate: { label: '膨胀', constant: 'cv.dilate', code: 'dilate' },
+      open: { label: '开运算', constant: 'cv.MORPH_OPEN', code: 'MORPH_OPEN' },
+      close: { label: '闭运算', constant: 'cv.MORPH_CLOSE', code: 'MORPH_CLOSE' }
+    };
+
+    const SHAPE_CONSTANT = {
+      rect: { label: '矩形', js: 'cv.MORPH_RECT' },
+      cross: { label: '十字形', js: 'cv.MORPH_CROSS' },
+      ellipse: { label: '椭圆形', js: 'cv.MORPH_ELLIPSE' }
+    };
+
+    const RETRIEVAL_CONSTANT = {
+      external: { label: '仅最外层', js: 'cv.RETR_EXTERNAL' },
+      list: { label: '全部平铺', js: 'cv.RETR_LIST' },
+      tree: { label: '完整层级', js: 'cv.RETR_TREE' }
+    };
+
+    const THRESHOLD_MODES = {
+      binary: { label: '普通二值化', js: 'cv.THRESH_BINARY', invert: false, otsu: false },
+      inverse: { label: '反向二值化', js: 'cv.THRESH_BINARY_INV', invert: true, otsu: false },
+      otsu: { label: 'Otsu 自动阈值', js: 'cv.THRESH_BINARY | cv.THRESH_OTSU', invert: false, otsu: true },
+      otsuInverse: { label: '反向 Otsu', js: 'cv.THRESH_BINARY_INV | cv.THRESH_OTSU', invert: true, otsu: true }
+    };
+
+    // -------------------------------------------------------------------------
+    // 2. 教学定义：控件、概念、代码和观察建议
+    // -------------------------------------------------------------------------
+
+    const OPERATIONS = {
+      grayscale: {
+        title: '灰度化',
+        functionName: 'cv.cvtColor()',
+        summary: '把浏览器读入的四通道 RGBA 彩色图转换为单通道灰度图，观察“颜色”如何被压缩为“亮度”。',
+        concept: '彩色图每个像素通常包含 R、G、B（以及透明度 A）多个分量；灰度图只保留一个亮度分量。OpenCV 并不是简单取三通道平均值，而是按人眼对不同颜色的敏感程度进行加权。',
+        controls: [],
+        pipeline: () => ['原始 RGBA', '颜色空间转换', '单通道灰度'],
+        explanations: () => [
+          '<code>cv.imread()</code> 从 Canvas 创建 <code>cv.Mat</code>。浏览器图片通常得到四通道 RGBA 矩阵。',
+          '<code>cv.COLOR_RGBA2GRAY</code> 明确指定输入的通道顺序，避免把 RGBA 错当成 BGR。',
+          '输出矩阵只有 1 个通道，因此占用的像素数据通常比四通道输入更少。',
+          '用完的 <code>cv.Mat</code> 必须调用 <code>.delete()</code>，否则 WebAssembly 内存不会及时释放。'
+        ],
+        observe: '<strong>试着观察：</strong>红、绿、蓝区域变成灰度后并不一样亮。绿色通常看起来更亮，因为人眼对绿色更敏感。',
+        code: () => `const src = cv.imread('sourceCanvas');
+const dst = new cv.Mat();
+
+cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
+cv.imshow('resultCanvas', dst);
+
+src.delete();
+dst.delete();`
+      },
+
+      gaussian: {
+        title: '高斯模糊',
+        functionName: 'cv.GaussianBlur()',
+        summary: '让邻域像素按高斯分布加权平均。卷积核越大，细节被平滑得越明显；Sigma 决定权重衰减速度。',
+        concept: '高斯模糊是一种低通滤波：缓慢变化的区域被保留，快速变化的细节与噪声被削弱。中心像素权重最大，距离中心越远权重越小，因此通常比简单均值模糊更自然。',
+        controls: [
+          { key: 'kernel', type: 'range', label: '卷积核大小', min: 1, max: 31, step: 2, format: value => `${value} × ${value}`, help: '必须为正奇数。尺寸越大，参与平均的邻域越宽。' },
+          { key: 'sigma', type: 'range', label: 'Sigma X', min: 0, max: 10, step: 0.1, format: value => Number(value) === 0 ? '自动' : Number(value).toFixed(1), help: '0 表示由 OpenCV 根据卷积核自动估算。' }
+        ],
+        pipeline: params => ['原始 RGBA', `高斯核 ${params.kernel}×${params.kernel}`, '平滑图像'],
+        explanations: params => [
+          `<code>new cv.Size(${params.kernel}, ${params.kernel})</code> 定义卷积窗口；宽和高都必须是正奇数。`,
+          `<code>sigmaX = ${Number(params.sigma).toFixed(1)}</code> 控制水平方向高斯分布的标准差；0 让 OpenCV 自动计算。`,
+          '<code>sigmaY = 0</code> 时会采用与 sigmaX 相同的值。',
+          '<code>cv.BORDER_DEFAULT</code> 决定卷积核碰到图片边缘时如何补充边界像素。'
+        ],
+        observe: '<strong>试着观察：</strong>先把卷积核从 3 调到 15，再改变 Sigma。注意小文字、尖锐边缘和纹理噪声消失的先后顺序。',
+        code: params => `const src = cv.imread('sourceCanvas');
+const dst = new cv.Mat();
+const ksize = new cv.Size(${params.kernel}, ${params.kernel});
+
+cv.GaussianBlur(
+  src,
+  dst,
+  ksize,
+  ${Number(params.sigma).toFixed(1)},
+  0,
+  cv.BORDER_DEFAULT
+);
+cv.imshow('resultCanvas', dst);
+
+src.delete();
+dst.delete();`
+      },
+
+      threshold: {
+        title: '二值化',
+        functionName: 'cv.threshold()',
+        summary: '先转成灰度图，再把每个像素分到“黑”或“白”两类。它是分割前景、寻找轮廓和制作掩膜的常见入口。',
+        concept: '普通二值化把灰度值与阈值比较；超过阈值的像素变为最大值，其他像素变为 0。反向模式交换黑白。Otsu 模式会分析直方图并自动寻找能最好区分两类像素的阈值。',
+        controls: [
+          { key: 'mode', type: 'select', label: '阈值模式', options: [
+            { value: 'binary', label: '普通二值化' },
+            { value: 'inverse', label: '反向二值化' },
+            { value: 'otsu', label: 'Otsu 自动阈值' },
+            { value: 'otsuInverse', label: '反向 Otsu' }
+          ], help: 'Otsu 会自动计算阈值，适合前景与背景亮度差异明显的图片。' },
+          { key: 'value', type: 'range', label: '阈值', min: 0, max: 255, step: 1, format: value => String(value), help: 'Otsu 模式下由算法自动计算，因此此滑块会禁用。' },
+          { key: 'maxValue', type: 'range', label: '白色最大值', min: 1, max: 255, step: 1, format: value => String(value), help: '满足条件的像素被设置为该值，通常使用 255。' }
+        ],
+        pipeline: params => ['原始 RGBA', '灰度化', THRESHOLD_MODES[params.mode].label, '黑白掩膜'],
+        explanations: params => {
+          const mode = THRESHOLD_MODES[params.mode];
+          return [
+            '<code>cv.cvtColor()</code> 先把四通道输入转换为单通道灰度图，因为阈值比较针对单个亮度值。',
+            `<code>${mode.js}</code> 决定比较方向${mode.otsu ? '，并启用 Otsu 自动阈值' : ''}。`,
+            mode.otsu ? 'Otsu 模式中传入的阈值写为 <code>0</code>；函数返回值会告诉你算法实际选择的阈值。' : `当前阈值为 <code>${params.value}</code>：像素将围绕这个分界值被分成两类。`,
+            `<code>maxValue = ${params.maxValue}</code> 决定“白色”一类的输出像素值。`
+          ];
+        },
+        observe: '<strong>试着观察：</strong>普通模式下慢慢移动阈值，看看哪些区域最先变黑或变白；再切换 Otsu，比较自动阈值是否更合适。',
+        code: params => {
+          const mode = THRESHOLD_MODES[params.mode];
+          const thresholdValue = mode.otsu ? 0 : params.value;
+          return `const src = cv.imread('sourceCanvas');
+const gray = new cv.Mat();
+const dst = new cv.Mat();
+
+cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+const usedThreshold = cv.threshold(
+  gray,
+  dst,
+  ${thresholdValue},
+  ${params.maxValue},
+  ${mode.js}
+);
+cv.imshow('resultCanvas', dst);
+
+console.log('实际阈值：', usedThreshold);
+src.delete();
+gray.delete();
+dst.delete();`;
+        }
+      },
+
+      canny: {
+        title: 'Canny 边缘检测',
+        functionName: 'cv.Canny()',
+        summary: '通过梯度、非极大值抑制和双阈值连接，提取较细且连续的边缘。低阈值和高阈值共同决定哪些边缘被保留。',
+        concept: 'Canny 不只是“找亮度变化”。它先计算梯度，再把宽边缘压细，然后用双阈值区分强边缘、弱边缘和噪声：弱边缘只有连接到强边缘时才会留下。',
+        controls: [
+          { key: 'low', type: 'range', label: '低阈值', min: 0, max: 254, step: 1, format: value => String(value), help: '低于该值的梯度通常被抛弃。' },
+          { key: 'high', type: 'range', label: '高阈值', min: 1, max: 255, step: 1, format: value => String(value), help: '高于该值的梯度被视为强边缘；必须大于低阈值。' },
+          { key: 'blurKernel', type: 'select', label: '预模糊', options: [
+            { value: 1, label: '不模糊' },
+            { value: 3, label: '3 × 3 高斯模糊' },
+            { value: 5, label: '5 × 5 高斯模糊' },
+            { value: 7, label: '7 × 7 高斯模糊' }
+          ], help: '先抑制细小噪声，可减少碎边；也可能损失微小结构。' },
+          { key: 'aperture', type: 'select', label: 'Sobel 孔径', options: [
+            { value: 3, label: '3 × 3（常用）' },
+            { value: 5, label: '5 × 5' },
+            { value: 7, label: '7 × 7' }
+          ], help: '用于计算梯度的 Sobel 核尺寸，只能是 3、5 或 7。' },
+          { key: 'l2Gradient', type: 'checkbox', label: '使用 L2 梯度', help: '使用 sqrt(dx² + dy²)，更精确但计算量略高。' }
+        ],
+        pipeline: params => ['原始 RGBA', '灰度化', params.blurKernel > 1 ? `高斯模糊 ${params.blurKernel}×${params.blurKernel}` : '跳过模糊', `Canny ${params.low}/${params.high}`, '边缘图'],
+        explanations: params => [
+          '<code>cv.cvtColor()</code> 将输入转换为单通道灰度图。',
+          params.blurKernel > 1 ? `<code>cv.GaussianBlur()</code> 使用 ${params.blurKernel}×${params.blurKernel} 核先减少噪声。` : '当前跳过预模糊，细纹理也更容易被当成边缘。',
+          `<code>${params.low}</code> 是低阈值，<code>${params.high}</code> 是高阈值；位于两者之间的弱边缘必须连接到强边缘才会保留。`,
+          `<code>apertureSize = ${params.aperture}</code> 决定 Sobel 梯度核尺寸。`,
+          `<code>L2gradient = ${params.l2Gradient}</code> 决定采用精确 L2 范数还是更快的近似值。`
+        ],
+        observe: '<strong>试着观察：</strong>先固定高阈值，只移动低阈值；再固定低阈值，只移动高阈值。比较“边缘连续性”和“噪声数量”分别如何变化。',
+        code: params => {
+          const blurLines = params.blurKernel > 1
+            ? `const smoothed = new cv.Mat();\ncv.GaussianBlur(gray, smoothed, new cv.Size(${params.blurKernel}, ${params.blurKernel}), 0);\n`
+            : `const smoothed = gray; // 本次跳过预模糊\n`;
+          const cleanup = params.blurKernel > 1 ? 'smoothed.delete();\n' : '';
+          return `const src = cv.imread('sourceCanvas');
+const gray = new cv.Mat();
+const edges = new cv.Mat();
+
+cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+${blurLines}cv.Canny(
+  smoothed,
+  edges,
+  ${params.low},
+  ${params.high},
+  ${params.aperture},
+  ${params.l2Gradient}
+);
+cv.imshow('resultCanvas', edges);
+
+src.delete();
+gray.delete();
+${cleanup}edges.delete();`;
+        }
+      },
+
+      morphology: {
+        title: '形态学操作',
+        functionName: 'cv.morphologyEx()',
+        summary: '在二值图上用结构元素探测局部形状。腐蚀会收缩白色区域，膨胀会扩张；开运算去小噪点，闭运算补小孔洞。',
+        concept: '形态学关注的是“形状”而不是颜色。结构元素像一个小探针，在图像上滑动：探针的形状、大小和迭代次数共同决定哪些白色区域被保留、扩张或消除。',
+        controls: [
+          { key: 'mode', type: 'select', label: '操作类型', options: [
+            { value: 'erode', label: '腐蚀 Erode' },
+            { value: 'dilate', label: '膨胀 Dilate' },
+            { value: 'open', label: '开运算 Open' },
+            { value: 'close', label: '闭运算 Close' }
+          ], help: '开运算 = 先腐蚀后膨胀；闭运算 = 先膨胀后腐蚀。' },
+          { key: 'threshold', type: 'range', label: '预处理阈值', min: 0, max: 255, step: 1, format: value => String(value), help: '形态学前先把灰度图变成黑白掩膜。' },
+          { key: 'invert', type: 'checkbox', label: '反转前景', help: '让较暗区域变白，适合浅色背景上的深色物体。' },
+          { key: 'shape', type: 'select', label: '结构元素形状', options: [
+            { value: 'rect', label: '矩形' },
+            { value: 'cross', label: '十字形' },
+            { value: 'ellipse', label: '椭圆形' }
+          ], help: '不同形状会对角点、细线和圆弧产生不同影响。' },
+          { key: 'kernel', type: 'range', label: '结构元素大小', min: 1, max: 21, step: 2, format: value => `${value} × ${value}`, help: '必须为正奇数。越大，形状变化越明显。' },
+          { key: 'iterations', type: 'range', label: '迭代次数', min: 1, max: 8, step: 1, format: value => `${value} 次`, help: '重复执行操作。大核与多次迭代会叠加影响。' }
+        ],
+        pipeline: params => ['原始 RGBA', '灰度化', params.invert ? '反向二值化' : '二值化', `${MORPHOLOGY_MODE[params.mode].label} × ${params.iterations}`, '形态学结果'],
+        explanations: params => [
+          `<code>cv.threshold()</code> 先创建二值掩膜；当前阈值 ${params.threshold}，${params.invert ? '暗区域作为白色前景' : '亮区域作为白色前景'}。`,
+          `<code>cv.getStructuringElement(${SHAPE_CONSTANT[params.shape].js}, new cv.Size(${params.kernel}, ${params.kernel}))</code> 创建${SHAPE_CONSTANT[params.shape].label}探针。`,
+          params.mode === 'erode' ? '<code>cv.erode()</code> 只有结构元素覆盖范围都满足条件时才保留白色中心，因此白色区域收缩。' :
+            params.mode === 'dilate' ? '<code>cv.dilate()</code> 只要邻域存在白色像素就扩张中心，因此白色区域增大。' :
+            `<code>cv.morphologyEx(..., ${MORPHOLOGY_MODE[params.mode].constant}, ...)</code> 组合基础操作完成${MORPHOLOGY_MODE[params.mode].label}。`,
+          `<code>iterations = ${params.iterations}</code> 表示重复执行次数。`,
+          '结构元素本身也是 WebAssembly 资源，使用后同样要调用 <code>kernel.delete()</code>。'
+        ],
+        observe: '<strong>试着观察：</strong>用内置示例切换开运算与闭运算。开运算更擅长清除独立小白点，闭运算更擅长连接窄缝或填补小黑洞。',
+        code: params => {
+          const thresholdType = params.invert ? 'cv.THRESH_BINARY_INV' : 'cv.THRESH_BINARY';
+          const shape = SHAPE_CONSTANT[params.shape].js;
+          let operationLines;
+          if (params.mode === 'erode') {
+            operationLines = `cv.erode(\n  binary, dst, kernel, new cv.Point(-1, -1),\n  ${params.iterations}, cv.BORDER_CONSTANT,\n  cv.morphologyDefaultBorderValue()\n);`;
+          } else if (params.mode === 'dilate') {
+            operationLines = `cv.dilate(\n  binary, dst, kernel, new cv.Point(-1, -1),\n  ${params.iterations}, cv.BORDER_CONSTANT,\n  cv.morphologyDefaultBorderValue()\n);`;
+          } else {
+            operationLines = `cv.morphologyEx(\n  binary, dst, ${MORPHOLOGY_MODE[params.mode].constant}, kernel,\n  new cv.Point(-1, -1), ${params.iterations},\n  cv.BORDER_CONSTANT, cv.morphologyDefaultBorderValue()\n);`;
+          }
+          return `const src = cv.imread('sourceCanvas');
+const gray = new cv.Mat();
+const binary = new cv.Mat();
+const dst = new cv.Mat();
+
+cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+cv.threshold(gray, binary, ${params.threshold}, 255, ${thresholdType});
+
+const kernel = cv.getStructuringElement(
+  ${shape},
+  new cv.Size(${params.kernel}, ${params.kernel})
+);
+${operationLines}
+cv.imshow('resultCanvas', dst);
+
+src.delete();
+gray.delete();
+binary.delete();
+dst.delete();
+kernel.delete();`;
+        }
+      },
+
+      contours: {
+        title: '轮廓检测',
+        functionName: 'cv.findContours()',
+        summary: '从二值图中追踪边界点，并计算轮廓面积、周长与外接矩形。结果会绘制回彩色原图，方便理解检测对象。',
+        concept: '轮廓是一串有顺序的边界点。它与 Canny 边缘并不相同：轮廓通常来自连通的二值区域，能进一步计算几何特征；检索模式则决定是否保留内部孔洞和父子层级。',
+        controls: [
+          { key: 'threshold', type: 'range', label: '预处理阈值', min: 0, max: 255, step: 1, format: value => String(value), help: '先生成二值图，再从白色区域寻找轮廓。' },
+          { key: 'invert', type: 'checkbox', label: '反转前景', help: '让较暗物体成为白色前景，适合白底黑物体。' },
+          { key: 'retrieval', type: 'select', label: '检索模式', options: [
+            { value: 'external', label: 'RETR_EXTERNAL · 仅最外层' },
+            { value: 'list', label: 'RETR_LIST · 全部平铺' },
+            { value: 'tree', label: 'RETR_TREE · 完整层级' }
+          ], help: '带孔洞或嵌套图形时，LIST/TREE 通常会检测到更多轮廓。' },
+          { key: 'minArea', type: 'range', label: '最小面积', min: 0, max: 5000, step: 10, format: value => `${value} px²`, help: '面积小于该值的轮廓不绘制，用于过滤小噪点。' },
+          { key: 'showBoxes', type: 'checkbox', label: '绘制外接矩形', help: '调用 cv.boundingRect() 计算与坐标轴平行的最小矩形。' },
+          { key: 'showLabels', type: 'checkbox', label: '标注轮廓编号', help: '在外接矩形左上角绘制编号，对照右侧数据表。' }
+        ],
+        pipeline: params => ['原始 RGBA', '灰度化', params.invert ? '反向二值化' : '二值化', RETRIEVAL_CONSTANT[params.retrieval].label, `面积 ≥ ${params.minArea}`, '绘制轮廓'],
+        explanations: params => [
+          `<code>cv.threshold()</code> 生成用于追踪的黑白掩膜；当前${params.invert ? '反转' : '不反转'}前景。`,
+          `<code>cv.findContours(binary, contours, hierarchy, ${RETRIEVAL_CONSTANT[params.retrieval].js}, cv.CHAIN_APPROX_SIMPLE)</code> 提取边界并压缩共线点。`,
+          `<code>cv.contourArea()</code> 过滤面积小于 ${params.minArea} px² 的小轮廓。`,
+          '<code>cv.arcLength(contour, true)</code> 计算闭合轮廓周长。',
+          params.showBoxes ? '<code>cv.boundingRect()</code> 返回 x、y、width、height，并用 <code>cv.rectangle()</code> 绘制。' : '当前关闭外接矩形，只绘制轮廓线。',
+          '从 <code>MatVector.get(i)</code> 取出的每个轮廓也是独立 Mat，使用后必须逐一 <code>.delete()</code>。'
+        ],
+        observe: '<strong>试着观察：</strong>把检索模式从 EXTERNAL 改为 TREE，看看带孔洞的图形是否产生额外轮廓；再提高最小面积，观察小噪点如何被过滤。',
+        code: params => {
+          const thresholdType = params.invert ? 'cv.THRESH_BINARY_INV' : 'cv.THRESH_BINARY';
+          const retrieval = RETRIEVAL_CONSTANT[params.retrieval].js;
+          const boxCode = params.showBoxes ? `
+    const rect = cv.boundingRect(contour);
+    cv.rectangle(
+      dst,
+      new cv.Point(rect.x, rect.y),
+      new cv.Point(rect.x + rect.width, rect.y + rect.height),
+      new cv.Scalar(37, 99, 235, 255), 2
+    );` : '';
+          return `const src = cv.imread('sourceCanvas');
+const gray = new cv.Mat();
+const binary = new cv.Mat();
+const contours = new cv.MatVector();
+const hierarchy = new cv.Mat();
+const dst = src.clone();
+
+cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+cv.threshold(gray, binary, ${params.threshold}, 255, ${thresholdType});
+cv.findContours(
+  binary, contours, hierarchy,
+  ${retrieval}, cv.CHAIN_APPROX_SIMPLE
+);
+
+for (let i = 0; i < contours.size(); i += 1) {
+  const contour = contours.get(i);
+  const area = cv.contourArea(contour, false);
+  if (area >= ${params.minArea}) {
+    cv.drawContours(
+      dst, contours, i,
+      new cv.Scalar(15, 118, 110, 255), 2
+    );${boxCode}
+  }
+  contour.delete();
+}
+
+cv.imshow('resultCanvas', dst);
+src.delete();
+gray.delete();
+binary.delete();
+contours.delete();
+hierarchy.delete();
+dst.delete();`;
+        }
+      }
+    };
+
+    // -------------------------------------------------------------------------
+    // 3. WebAssembly 资源追踪：集中管理所有需要 delete() 的对象
+    // -------------------------------------------------------------------------
+
+    class ResourceTracker {
+      constructor() {
+        this.resources = [];
+        this.created = 0;
+        this.deleted = 0;
+      }
+
+      track(resource) {
+        if (resource && typeof resource.delete === 'function') {
+          this.resources.push(resource);
+          this.created += 1;
+        }
+        return resource;
+      }
+
+      release(resource) {
+        if (!resource || typeof resource.delete !== 'function') return;
+        const index = this.resources.lastIndexOf(resource);
+        if (index >= 0) this.resources.splice(index, 1);
+        try {
+          resource.delete();
+          this.deleted += 1;
+        } catch (error) {
+          console.warn('释放 OpenCV 资源时出现问题：', error);
+        }
+      }
+
+      releaseAll() {
+        while (this.resources.length > 0) {
+          const resource = this.resources.pop();
+          try {
+            resource.delete();
+            this.deleted += 1;
+          } catch (error) {
+            console.warn('释放 OpenCV 资源时出现问题：', error);
+          }
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. OpenCV 初始化与版本识别
+    // -------------------------------------------------------------------------
+
+    async function initializeOpenCV() {
+      setCvStatus('loading', '正在加载 OpenCV…');
+      try {
+        if (window.__opencvScriptError || !window.cv) {
+          throw new Error('未找到 opencv.js。请确认它与 index.html 位于同一个文件夹。');
+        }
+
+        const candidate = window.cv;
+        const loaded = typeof candidate.then === 'function' ? await candidate : candidate;
+        if (!loaded || typeof loaded.Mat !== 'function') {
+          throw new Error('OpenCV.js 已加载，但运行时未正确初始化。');
+        }
+
+        window.cv = loaded;
+        state.cvReady = true;
+        state.cvVersion = detectOpenCVVersion(loaded);
+        document.body.dataset.cvReady = 'true';
+        setCvStatus('ready', `OpenCV 已就绪 · ${state.cvVersion}`);
+        renderTeachingPanel();
+        if (state.imageLoaded) scheduleProcessing(true);
+      } catch (error) {
+        state.cvReady = false;
+        document.body.dataset.cvReady = 'false';
+        setCvStatus('error', 'OpenCV 加载失败');
+        showError(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    function detectOpenCVVersion(cvModule) {
+      try {
+        const info = cvModule.getBuildInformation();
+        const match = info.match(/OpenCV\s+([0-9]+(?:\.[0-9]+){1,3})/i) || info.match(/Version\s*control:\s*([^\n]+)/i);
+        if (match && match[1] && match[1].trim().toLowerCase() !== 'unknown') return match[1].trim();
+        const config = info.match(/OpenCV\s+([0-9.]+)\s+=+/i);
+        return config ? config[1] : '4.x';
+      } catch {
+        return '4.x';
+      }
+    }
+
+    function setCvStatus(stateName, text) {
+      $('#cvStatus').dataset.state = stateName;
+      $('#cvStatusText').textContent = text;
+    }
+
+    // -------------------------------------------------------------------------
+    // 5. 图片读取、示例图与像素检查
+    // -------------------------------------------------------------------------
+
+    function openFilePicker() {
+      $('#fileInput').click();
+    }
+
+    async function loadImageFile(file) {
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        showToast('请选择浏览器支持的图片文件。', 'error');
+        return;
+      }
+
+      clearError();
+      const objectUrl = URL.createObjectURL(file);
+      const image = new Image();
+      image.decoding = 'async';
+
+      try {
+        await new Promise((resolve, reject) => {
+          image.onload = resolve;
+          image.onerror = () => reject(new Error('图片解码失败，格式可能不受当前浏览器支持。'));
+          image.src = objectUrl;
+        });
+
+        const canvas = $('#sourceCanvas');
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0);
+        markImageReady(file.name || '本地图片');
+
+        const megapixels = (canvas.width * canvas.height) / 1_000_000;
+        if (megapixels > 12) {
+          showToast(`图片约 ${megapixels.toFixed(1)} MP，处理时可能占用较多内存。`, 'success');
+        }
+      } catch (error) {
+        showError(error instanceof Error ? error.message : String(error));
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+        $('#fileInput').value = '';
+      }
+    }
+
+    function createSampleImage() {
+      clearError();
+      const canvas = $('#sourceCanvas');
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      const width = 960;
+      const height = 640;
+      canvas.width = width;
+      canvas.height = height;
+
+      const background = context.createLinearGradient(0, 0, width, height);
+      background.addColorStop(0, '#f8fafc');
+      background.addColorStop(0.55, '#e7eef7');
+      background.addColorStop(1, '#dbeafe');
+      context.fillStyle = background;
+      context.fillRect(0, 0, width, height);
+
+      context.save();
+      context.globalAlpha = 0.34;
+      context.strokeStyle = '#94a3b8';
+      context.lineWidth = 1;
+      for (let x = 0; x <= width; x += 40) {
+        context.beginPath();
+        context.moveTo(x, 0);
+        context.lineTo(x, height);
+        context.stroke();
+      }
+      for (let y = 0; y <= height; y += 40) {
+        context.beginPath();
+        context.moveTo(0, y);
+        context.lineTo(width, y);
+        context.stroke();
+      }
+      context.restore();
+
+      context.fillStyle = '#0f172a';
+      context.fillRect(70, 85, 245, 165);
+      context.fillStyle = '#14b8a6';
+      context.fillRect(92, 107, 201, 121);
+      context.fillStyle = '#f8fafc';
+      context.fillRect(126, 139, 60, 57);
+      context.fillStyle = '#0f172a';
+      context.fillRect(199, 139, 60, 57);
+
+      context.beginPath();
+      context.arc(510, 176, 98, 0, Math.PI * 2);
+      context.fillStyle = '#2563eb';
+      context.fill();
+      context.beginPath();
+      context.arc(510, 176, 43, 0, Math.PI * 2);
+      context.fillStyle = '#f8fafc';
+      context.fill();
+
+      context.save();
+      context.translate(770, 170);
+      context.rotate(Math.PI / 8);
+      context.fillStyle = '#f97316';
+      context.fillRect(-86, -64, 172, 128);
+      context.fillStyle = '#fff7ed';
+      context.fillRect(-51, -31, 102, 62);
+      context.restore();
+
+      context.strokeStyle = '#7c3aed';
+      context.lineWidth = 17;
+      context.lineCap = 'round';
+      context.beginPath();
+      context.moveTo(85, 385);
+      context.bezierCurveTo(195, 275, 278, 505, 390, 375);
+      context.stroke();
+
+      context.fillStyle = '#111827';
+      context.font = '800 62px system-ui, sans-serif';
+      context.fillText('OpenCV LAB', 440, 415);
+      context.fillStyle = '#475569';
+      context.font = '500 25px system-ui, sans-serif';
+      context.fillText('threshold · edges · morphology · contours', 442, 458);
+
+      const dots = [
+        [105, 538, 8], [139, 551, 5], [173, 531, 11], [220, 557, 6],
+        [265, 532, 9], [304, 558, 5], [347, 538, 7], [392, 560, 10]
+      ];
+      context.fillStyle = '#111827';
+      for (const [x, y, radius] of dots) {
+        context.beginPath();
+        context.arc(x, y, radius, 0, Math.PI * 2);
+        context.fill();
+      }
+
+      context.fillStyle = '#ffffff';
+      context.strokeStyle = '#0f766e';
+      context.lineWidth = 7;
+      roundRectPath(context, 520, 505, 337, 80, 20);
+      context.fill();
+      context.stroke();
+      context.fillStyle = '#0f766e';
+      context.font = '750 27px system-ui, sans-serif';
+      context.fillText('拖动参数，观察变化', 555, 556);
+
+      markImageReady('内置教学示例.png');
+      showToast('已打开内置教学示例。', 'success');
+    }
+
+    function roundRectPath(context, x, y, width, height, radius) {
+      const r = Math.min(radius, width / 2, height / 2);
+      context.beginPath();
+      context.moveTo(x + r, y);
+      context.arcTo(x + width, y, x + width, y + height, r);
+      context.arcTo(x + width, y + height, x, y + height, r);
+      context.arcTo(x, y + height, x, y, r);
+      context.arcTo(x, y, x + width, y, r);
+      context.closePath();
+    }
+
+    function markImageReady(name) {
+      state.imageLoaded = true;
+      state.imageName = name;
+      state.lastReport = null;
+      document.body.dataset.imageReady = 'true';
+      $('#sourceCard').classList.add('has-image');
+      $('#resultCard').classList.remove('has-image');
+      $('#clearButton').disabled = false;
+      $('#downloadButton').disabled = true;
+      $('#imageName').textContent = name;
+
+      const canvas = $('#sourceCanvas');
+      $('#sourceSizeBadge').textContent = `原图 ${canvas.width} × ${canvas.height}`;
+      $('#sourceMeta').textContent = `${canvas.width} × ${canvas.height} · RGBA`;
+      $('#processState').textContent = state.cvReady ? '准备处理' : '等待 OpenCV';
+      resetRunMetrics();
+      if (state.cvReady) scheduleProcessing(true);
+    }
+
+    function clearImage() {
+      clearTimeout(state.processTimer);
+      state.imageLoaded = false;
+      state.imageName = '';
+      state.lastReport = null;
+      document.body.dataset.imageReady = 'false';
+      document.body.dataset.processing = 'false';
+
+      for (const canvas of [$('#sourceCanvas'), $('#resultCanvas')]) {
+        const context = canvas.getContext('2d');
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+
+      $('#sourceCard').classList.remove('has-image');
+      $('#resultCard').classList.remove('has-image');
+      $('#clearButton').disabled = true;
+      $('#downloadButton').disabled = true;
+      $('#imageName').textContent = '尚未选择图片';
+      $('#sourceSizeBadge').textContent = '原图 — × —';
+      $('#resultTypeBadge').textContent = '输出 —';
+      $('#sourceMeta').textContent = 'sourceCanvas';
+      $('#resultMeta').textContent = 'resultCanvas';
+      $('#processState').textContent = '等待图片';
+      $('#sourcePixel').textContent = 'x: — · y: — · RGBA: —';
+      $('#resultPixel').textContent = 'x: — · y: — · RGBA: —';
+      clearError();
+      resetRunMetrics();
+      renderContourTable(null);
+    }
+
+    function bindPixelInspector(canvas, output) {
+      let framePending = false;
+      let latestEvent = null;
+
+      canvas.addEventListener('mousemove', event => {
+        latestEvent = event;
+        if (framePending) return;
+        framePending = true;
+        requestAnimationFrame(() => {
+          framePending = false;
+          if (!latestEvent || canvas.width === 0 || canvas.height === 0) return;
+          const rect = canvas.getBoundingClientRect();
+          const x = Math.max(0, Math.min(canvas.width - 1, Math.floor((latestEvent.clientX - rect.left) * canvas.width / rect.width)));
+          const y = Math.max(0, Math.min(canvas.height - 1, Math.floor((latestEvent.clientY - rect.top) * canvas.height / rect.height)));
+          try {
+            const pixel = canvas.getContext('2d', { willReadFrequently: true }).getImageData(x, y, 1, 1).data;
+            output.textContent = `x: ${x} · y: ${y} · RGBA: ${pixel[0]}, ${pixel[1]}, ${pixel[2]}, ${pixel[3]}`;
+          } catch {
+            output.textContent = `x: ${x} · y: ${y} · 像素不可读取`;
+          }
+        });
+      });
+
+      canvas.addEventListener('mouseleave', () => {
+        latestEvent = null;
+        output.textContent = 'x: — · y: — · RGBA: —';
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. OpenCV 处理器
+    // -------------------------------------------------------------------------
+
+    function createGray(src, tracker) {
+      const gray = tracker.track(new cv.Mat());
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      return gray;
+    }
+
+    function applyGrayscale(src, tracker) {
+      const dst = tracker.track(new cv.Mat());
+      cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
+      return { mat: dst, extra: {} };
+    }
+
+    function applyGaussian(src, tracker, params) {
+      const dst = tracker.track(new cv.Mat());
+      cv.GaussianBlur(
+        src,
+        dst,
+        new cv.Size(params.kernel, params.kernel),
+        Number(params.sigma),
+        0,
+        cv.BORDER_DEFAULT
+      );
+      return { mat: dst, extra: {} };
+    }
+
+    function applyThreshold(src, tracker, params) {
+      const gray = createGray(src, tracker);
+      const dst = tracker.track(new cv.Mat());
+      const mode = THRESHOLD_MODES[params.mode];
+      let type = mode.invert ? cv.THRESH_BINARY_INV : cv.THRESH_BINARY;
+      if (mode.otsu) type |= cv.THRESH_OTSU;
+      const actualThreshold = cv.threshold(gray, dst, mode.otsu ? 0 : params.value, params.maxValue, type);
+      return { mat: dst, extra: { actualThreshold } };
+    }
+
+    function applyCanny(src, tracker, params) {
+      const gray = createGray(src, tracker);
+      let input = gray;
+      if (Number(params.blurKernel) > 1) {
+        const smoothed = tracker.track(new cv.Mat());
+        cv.GaussianBlur(gray, smoothed, new cv.Size(Number(params.blurKernel), Number(params.blurKernel)), 0, 0, cv.BORDER_DEFAULT);
+        input = smoothed;
+      }
+      const dst = tracker.track(new cv.Mat());
+      cv.Canny(input, dst, params.low, params.high, Number(params.aperture), Boolean(params.l2Gradient));
+      return { mat: dst, extra: {} };
+    }
+
+    function applyMorphology(src, tracker, params) {
+      const gray = createGray(src, tracker);
+      const binary = tracker.track(new cv.Mat());
+      const thresholdType = params.invert ? cv.THRESH_BINARY_INV : cv.THRESH_BINARY;
+      cv.threshold(gray, binary, params.threshold, 255, thresholdType);
+
+      const shapeMap = { rect: cv.MORPH_RECT, cross: cv.MORPH_CROSS, ellipse: cv.MORPH_ELLIPSE };
+      const kernel = tracker.track(cv.getStructuringElement(shapeMap[params.shape], new cv.Size(params.kernel, params.kernel)));
+      const dst = tracker.track(new cv.Mat());
+      const anchor = new cv.Point(-1, -1);
+      const borderValue = cv.morphologyDefaultBorderValue();
+
+      if (params.mode === 'erode') {
+        cv.erode(binary, dst, kernel, anchor, params.iterations, cv.BORDER_CONSTANT, borderValue);
+      } else if (params.mode === 'dilate') {
+        cv.dilate(binary, dst, kernel, anchor, params.iterations, cv.BORDER_CONSTANT, borderValue);
+      } else {
+        const mode = params.mode === 'open' ? cv.MORPH_OPEN : cv.MORPH_CLOSE;
+        cv.morphologyEx(binary, dst, mode, kernel, anchor, params.iterations, cv.BORDER_CONSTANT, borderValue);
+      }
+      return { mat: dst, extra: {} };
+    }
+
+    function applyContours(src, tracker, params) {
+      const gray = createGray(src, tracker);
+      const binary = tracker.track(new cv.Mat());
+      cv.threshold(gray, binary, params.threshold, 255, params.invert ? cv.THRESH_BINARY_INV : cv.THRESH_BINARY);
+
+      const contours = tracker.track(new cv.MatVector());
+      const hierarchy = tracker.track(new cv.Mat());
+      const retrievalMap = { external: cv.RETR_EXTERNAL, list: cv.RETR_LIST, tree: cv.RETR_TREE };
+      cv.findContours(binary, contours, hierarchy, retrievalMap[params.retrieval], cv.CHAIN_APPROX_SIMPLE);
+
+      const dst = tracker.track(src.clone());
+      const contourColor = new cv.Scalar(15, 118, 110, 255);
+      const boxColor = new cv.Scalar(37, 99, 235, 255);
+      const labelColor = new cv.Scalar(180, 35, 24, 255);
+      const stats = [];
+
+      for (let index = 0; index < contours.size(); index += 1) {
+        const contour = tracker.track(contours.get(index));
+        try {
+          const area = cv.contourArea(contour, false);
+          if (area < params.minArea) continue;
+          const perimeter = cv.arcLength(contour, true);
+          const rect = cv.boundingRect(contour);
+          const label = stats.length + 1;
+
+          cv.drawContours(dst, contours, index, contourColor, 2, cv.LINE_AA, hierarchy, 0);
+          if (params.showBoxes) {
+            cv.rectangle(
+              dst,
+              new cv.Point(rect.x, rect.y),
+              new cv.Point(rect.x + rect.width, rect.y + rect.height),
+              boxColor,
+              2,
+              cv.LINE_AA
+            );
+          }
+          if (params.showLabels) {
+            cv.putText(
+              dst,
+              String(label),
+              new cv.Point(rect.x, Math.max(17, rect.y - 5)),
+              cv.FONT_HERSHEY_SIMPLEX,
+              0.55,
+              labelColor,
+              2,
+              cv.LINE_AA,
+              false
+            );
+          }
+
+          stats.push({
+            label,
+            area,
+            perimeter,
+            rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+          });
+        } finally {
+          tracker.release(contour);
+        }
+      }
+
+      stats.sort((a, b) => b.area - a.area);
+      return {
+        mat: dst,
+        extra: {
+          totalContours: contours.size(),
+          keptContours: stats.length,
+          contours: stats.slice(0, 20)
+        }
+      };
+    }
+
+    function runCurrentOperation(src, tracker) {
+      const params = state.params[state.currentOperation];
+      switch (state.currentOperation) {
+        case 'grayscale': return applyGrayscale(src, tracker, params);
+        case 'gaussian': return applyGaussian(src, tracker, params);
+        case 'threshold': return applyThreshold(src, tracker, params);
+        case 'canny': return applyCanny(src, tracker, params);
+        case 'morphology': return applyMorphology(src, tracker, params);
+        case 'contours': return applyContours(src, tracker, params);
+        default: throw new Error(`未知实验：${state.currentOperation}`);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 7. 处理调度、结果展示与矩阵信息
+    // -------------------------------------------------------------------------
+
+    function scheduleProcessing(immediate = false) {
+      clearTimeout(state.processTimer);
+      if (!state.cvReady || !state.imageLoaded) return;
+      state.processTimer = setTimeout(() => {
+        processImage().catch(error => showError(error instanceof Error ? error.message : String(error)));
+      }, immediate ? 0 : 80);
+    }
+
+    async function processImage() {
+      if (!state.cvReady || !state.imageLoaded || state.processing) return;
+      state.processing = true;
+      document.body.dataset.processing = 'true';
+      $('#processingOverlay').classList.add('visible');
+      $('#processingOverlay').setAttribute('aria-hidden', 'false');
+      $('#processState').textContent = '处理中…';
+      clearError();
+
+      await new Promise(resolve => requestAnimationFrame(resolve));
+
+      const tracker = new ResourceTracker();
+      let report = null;
+      let caughtError = null;
+
+      try {
+        const src = tracker.track(cv.imread('sourceCanvas'));
+        const started = performance.now();
+        const outcome = runCurrentOperation(src, tracker);
+        const algorithmMs = performance.now() - started;
+        const displayStarted = performance.now();
+        cv.imshow('resultCanvas', outcome.mat);
+        const displayMs = performance.now() - displayStarted;
+
+        report = {
+          operation: state.currentOperation,
+          algorithmMs,
+          displayMs,
+          totalMs: algorithmMs + displayMs,
+          matrix: readMatInfo(outcome.mat),
+          extra: outcome.extra || {}
+        };
+      } catch (error) {
+        caughtError = error;
+      } finally {
+        tracker.releaseAll();
+        state.processing = false;
+        document.body.dataset.processing = 'false';
+        $('#processingOverlay').classList.remove('visible');
+        $('#processingOverlay').setAttribute('aria-hidden', 'true');
+      }
+
+      if (caughtError) {
+        $('#processState').textContent = '处理失败';
+        showError(formatOpenCVError(caughtError));
+        throw caughtError;
+      }
+
+      report.resources = { created: tracker.created, deleted: tracker.deleted };
+      state.lastReport = report;
+      $('#resultCanvas').dataset.rendered = report.operation;
+      $('#resultCard').classList.add('has-image');
+      $('#downloadButton').disabled = false;
+      $('#processState').textContent = '已更新';
+      $('#resultTypeBadge').textContent = `输出 ${report.matrix.type}`;
+      $('#resultMeta').textContent = `${report.matrix.cols} × ${report.matrix.rows} · ${report.matrix.channels} 通道`;
+      renderRunMetrics(report);
+      renderContourTable(report);
+    }
+
+    function readMatInfo(mat) {
+      const depthNames = { 0: '8U', 1: '8S', 2: '16U', 3: '16S', 4: '32S', 5: '32F', 6: '64F', 7: '16F' };
+      const channels = mat.channels();
+      const depth = typeof mat.depth === 'function' ? mat.depth() : (mat.type() & 7);
+      return {
+        rows: mat.rows,
+        cols: mat.cols,
+        channels,
+        type: `CV_${depthNames[depth] || depth}C${channels}`
+      };
+    }
+
+    function formatOpenCVError(error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return message.replace(/^BindingError:\s*/i, 'OpenCV 参数错误：').replace(/^RuntimeError:\s*/i, 'OpenCV 运行错误：');
+    }
+
+    // -------------------------------------------------------------------------
+    // 8. 动态参数控件
+    // -------------------------------------------------------------------------
+
+    function renderControls() {
+      const operation = OPERATIONS[state.currentOperation];
+      const params = state.params[state.currentOperation];
+      const container = $('#controlsContainer');
+      container.replaceChildren();
+
+      if (operation.controls.length === 0) {
+        const message = document.createElement('div');
+        message.className = 'concept-card';
+        message.textContent = '灰度化没有可调参数。切换其他实验即可使用滑块和选项实时观察变化。';
+        container.append(message);
+        return;
+      }
+
+      for (const control of operation.controls) {
+        if (control.type === 'checkbox') {
+          container.append(createCheckboxControl(control, params));
+        } else {
+          container.append(createStandardControl(control, params));
+        }
+      }
+      updateDependentControlStates();
+    }
+
+    function createStandardControl(control, params) {
+      const group = document.createElement('div');
+      group.className = 'control-group';
+
+      const labelRow = document.createElement('div');
+      labelRow.className = 'control-label-row';
+      const label = document.createElement('label');
+      const inputId = `control-${state.currentOperation}-${control.key}`;
+      label.htmlFor = inputId;
+      label.textContent = control.label;
+      labelRow.append(label);
+
+      if (control.type === 'range') {
+        const value = document.createElement('span');
+        value.className = 'control-value';
+        value.dataset.valueFor = control.key;
+        value.textContent = formatControlValue(control, params[control.key]);
+        labelRow.append(value);
+      }
+      group.append(labelRow);
+
+      let input;
+      if (control.type === 'select') {
+        input = document.createElement('select');
+        for (const option of control.options) {
+          const optionElement = document.createElement('option');
+          optionElement.value = String(option.value);
+          optionElement.textContent = option.label;
+          optionElement.selected = String(params[control.key]) === String(option.value);
+          input.append(optionElement);
+        }
+      } else {
+        input = document.createElement('input');
+        input.type = 'range';
+        input.min = String(control.min);
+        input.max = String(control.max);
+        input.step = String(control.step);
+        input.value = String(params[control.key]);
+      }
+
+      input.id = inputId;
+      input.dataset.paramKey = control.key;
+      input.dataset.controlType = control.type;
+      input.addEventListener(control.type === 'range' ? 'input' : 'change', handleControlChange);
+      group.append(input);
+
+      if (control.help) {
+        const help = document.createElement('p');
+        help.className = 'control-help';
+        help.textContent = control.help;
+        group.append(help);
+      }
+      return group;
+    }
+
+    function createCheckboxControl(control, params) {
+      const wrapper = document.createElement('label');
+      wrapper.className = 'checkbox-row';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = Boolean(params[control.key]);
+      input.dataset.paramKey = control.key;
+      input.dataset.controlType = 'checkbox';
+      input.addEventListener('change', handleControlChange);
+
+      const copy = document.createElement('span');
+      copy.className = 'checkbox-copy';
+      const title = document.createElement('strong');
+      title.textContent = control.label;
+      const help = document.createElement('span');
+      help.textContent = control.help || '';
+      copy.append(title, help);
+      wrapper.append(input, copy);
+      return wrapper;
+    }
+
+    function handleControlChange(event) {
+      const input = event.currentTarget;
+      const key = input.dataset.paramKey;
+      const type = input.dataset.controlType;
+      const params = state.params[state.currentOperation];
+      let value;
+
+      if (type === 'checkbox') {
+        value = input.checked;
+      } else if (type === 'range') {
+        value = Number(input.value);
+      } else {
+        const definition = OPERATIONS[state.currentOperation].controls.find(item => item.key === key);
+        const originalOption = definition.options.find(option => String(option.value) === input.value);
+        value = originalOption ? originalOption.value : input.value;
+      }
+      params[key] = value;
+
+      if (state.currentOperation === 'canny') {
+        if (key === 'low' && params.low >= params.high) params.high = Math.min(255, params.low + 1);
+        if (key === 'high' && params.high <= params.low) params.low = Math.max(0, params.high - 1);
+      }
+
+      const definition = OPERATIONS[state.currentOperation].controls.find(item => item.key === key);
+      const valueOutput = $(`[data-value-for="${key}"]`, $('#controlsContainer'));
+      if (valueOutput && definition) valueOutput.textContent = formatControlValue(definition, params[key]);
+
+      syncControlValues();
+      updateDependentControlStates();
+      renderTeachingPanel();
+      scheduleProcessing(false);
+    }
+
+    function syncControlValues() {
+      const params = state.params[state.currentOperation];
+      for (const input of $$('[data-param-key]', $('#controlsContainer'))) {
+        const key = input.dataset.paramKey;
+        if (input.dataset.controlType === 'checkbox') input.checked = Boolean(params[key]);
+        else input.value = String(params[key]);
+        const definition = OPERATIONS[state.currentOperation].controls.find(item => item.key === key);
+        const output = $(`[data-value-for="${key}"]`, $('#controlsContainer'));
+        if (output && definition) output.textContent = formatControlValue(definition, params[key]);
+      }
+    }
+
+    function updateDependentControlStates() {
+      if (state.currentOperation === 'threshold') {
+        const mode = THRESHOLD_MODES[state.params.threshold.mode];
+        const thresholdInput = $('[data-param-key="value"]', $('#controlsContainer'));
+        if (thresholdInput) thresholdInput.disabled = mode.otsu;
+      }
+    }
+
+    function formatControlValue(control, value) {
+      return control.format ? control.format(value) : String(value);
+    }
+
+    function resetCurrentParameters() {
+      state.params[state.currentOperation] = JSON.parse(JSON.stringify(DEFAULT_PARAMS[state.currentOperation]));
+      renderControls();
+      renderTeachingPanel();
+      scheduleProcessing(true);
+      showToast('当前实验参数已恢复默认。', 'success');
+    }
+
+    // -------------------------------------------------------------------------
+    // 9. 教学面板与运行统计
+    // -------------------------------------------------------------------------
+
+    function selectOperation(operationId) {
+      if (!OPERATIONS[operationId] || operationId === state.currentOperation) return;
+      state.currentOperation = operationId;
+      state.lastReport = null;
+      for (const button of $$('.operation-button')) {
+        const active = button.dataset.operation === operationId;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+      }
+      renderControls();
+      renderTeachingPanel();
+      resetRunMetrics();
+      renderContourTable(null);
+      scheduleProcessing(true);
+    }
+
+    function renderTeachingPanel() {
+      const operation = OPERATIONS[state.currentOperation];
+      const params = state.params[state.currentOperation];
+      const index = OPERATION_ORDER.indexOf(state.currentOperation) + 1;
+
+      $('#lessonNumber').textContent = `实验 ${String(index).padStart(2, '0')} / ${String(OPERATION_ORDER.length).padStart(2, '0')}`;
+      $('#lessonFunction').textContent = operation.functionName;
+      $('#lessonTitle').textContent = operation.title;
+      $('#lessonSummary').textContent = operation.summary;
+      $('#conceptCard').textContent = operation.concept;
+      $('#codeBlock').textContent = operation.code(params);
+      $('#observeCard').innerHTML = operation.observe;
+
+      const list = $('#explanationList');
+      list.replaceChildren();
+      for (const explanation of operation.explanations(params)) {
+        const item = document.createElement('li');
+        item.innerHTML = explanation;
+        list.append(item);
+      }
+
+      renderPipeline(operation.pipeline(params));
+      $('#contourSection').classList.toggle('visible', state.currentOperation === 'contours');
+    }
+
+    function renderPipeline(steps) {
+      const strip = $('#pipelineStrip');
+      strip.replaceChildren();
+      const label = document.createElement('span');
+      label.className = 'pipeline-strip-label';
+      label.textContent = '处理流程';
+      strip.append(label);
+
+      steps.forEach((step, index) => {
+        const node = document.createElement('span');
+        node.className = 'pipeline-step';
+        node.textContent = step;
+        strip.append(node);
+        if (index < steps.length - 1) {
+          const arrow = document.createElement('span');
+          arrow.className = 'pipeline-arrow';
+          arrow.textContent = '→';
+          strip.append(arrow);
+        }
+      });
+    }
+
+    function resetRunMetrics() {
+      $('#runBadge').textContent = state.imageLoaded ? '等待更新' : '待运行';
+      $('#metricTime').textContent = '—';
+      $('#metricShape').textContent = '—';
+      $('#metricType').textContent = '—';
+      $('#metricMemory').textContent = '—';
+      $('#metricMemory').classList.remove('memory-ok');
+    }
+
+    function renderRunMetrics(report) {
+      $('#runBadge').textContent = `第 ${Math.round(performance.now())} ms 帧`;
+      $('#metricTime').textContent = `${report.algorithmMs.toFixed(2)} ms`;
+      $('#metricShape').textContent = `${report.matrix.cols} × ${report.matrix.rows} × ${report.matrix.channels}`;
+      $('#metricType').textContent = report.matrix.type;
+      $('#metricMemory').textContent = `${report.resources.deleted} / ${report.resources.created} 已释放`;
+      $('#metricMemory').classList.toggle('memory-ok', report.resources.deleted === report.resources.created);
+
+      if (report.operation === 'threshold' && Number.isFinite(report.extra.actualThreshold)) {
+        const mode = THRESHOLD_MODES[state.params.threshold.mode];
+        $('#runBadge').textContent = mode.otsu ? `Otsu = ${report.extra.actualThreshold.toFixed(1)}` : `阈值 = ${state.params.threshold.value}`;
+      } else if (report.operation === 'contours') {
+        $('#runBadge').textContent = `${report.extra.keptContours} / ${report.extra.totalContours} 个轮廓`;
+      } else {
+        $('#runBadge').textContent = `${report.algorithmMs.toFixed(2)} ms`;
+      }
+    }
+
+    function renderContourTable(report) {
+      const section = $('#contourSection');
+      section.classList.toggle('visible', state.currentOperation === 'contours');
+      const body = $('#contourTableBody');
+      body.replaceChildren();
+
+      if (!report || report.operation !== 'contours') {
+        $('#contourBadge').textContent = '0 个';
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 4;
+        cell.style.textAlign = 'center';
+        cell.style.color = 'var(--text-faint)';
+        cell.textContent = state.imageLoaded ? '等待轮廓检测结果' : '先打开一张图片';
+        row.append(cell);
+        body.append(row);
+        return;
+      }
+
+      $('#contourBadge').textContent = `${report.extra.keptContours} 个保留`;
+      if (report.extra.contours.length === 0) {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 4;
+        cell.style.textAlign = 'center';
+        cell.textContent = '没有满足最小面积的轮廓';
+        row.append(cell);
+        body.append(row);
+        return;
+      }
+
+      for (const contour of report.extra.contours) {
+        const row = document.createElement('tr');
+        const values = [
+          contour.label,
+          contour.area.toFixed(1),
+          contour.perimeter.toFixed(1),
+          `${contour.rect.width} × ${contour.rect.height}`
+        ];
+        for (const value of values) {
+          const cell = document.createElement('td');
+          cell.textContent = value;
+          row.append(cell);
+        }
+        body.append(row);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 10. 下载、复制、消息与错误处理
+    // -------------------------------------------------------------------------
+
+    function downloadResult() {
+      if (!state.imageLoaded || $('#resultCanvas').width === 0) return;
+      const canvas = $('#resultCanvas');
+      const baseName = (state.imageName || 'opencv-result').replace(/\.[^.]+$/, '').replace(/[^\w\u4e00-\u9fff-]+/g, '-');
+      const fileName = `${baseName}-${state.currentOperation}.png`;
+
+      const triggerDownload = url => {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.append(link);
+        link.click();
+        link.remove();
+      };
+
+      if (canvas.toBlob) {
+        canvas.toBlob(blob => {
+          if (!blob) {
+            showToast('生成 PNG 失败。', 'error');
+            return;
+          }
+          const url = URL.createObjectURL(blob);
+          triggerDownload(url);
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          showToast(`已生成 ${fileName}`, 'success');
+        }, 'image/png');
+      } else {
+        triggerDownload(canvas.toDataURL('image/png'));
+      }
+    }
+
+    async function copyCurrentCode() {
+      const code = $('#codeBlock').textContent;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(code);
+        } else {
+          const textarea = document.createElement('textarea');
+          textarea.value = code;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.append(textarea);
+          textarea.select();
+          const copied = document.execCommand('copy');
+          textarea.remove();
+          if (!copied) throw new Error('浏览器拒绝复制');
+        }
+        $('#copyCodeButton').textContent = '已复制';
+        setTimeout(() => { $('#copyCodeButton').textContent = '复制代码'; }, 1200);
+        showToast('示例代码已复制。', 'success');
+      } catch {
+        showToast('当前浏览器不允许从本地页面自动复制，请手动选择代码。', 'error');
+      }
+    }
+
+    function showToast(message, type = '') {
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`.trim();
+      toast.textContent = message;
+      $('#toastRegion').append(toast);
+      setTimeout(() => toast.remove(), 3200);
+    }
+
+    function showError(message) {
+      const banner = $('#errorBanner');
+      banner.textContent = message;
+      banner.classList.add('visible');
+    }
+
+    function clearError() {
+      const banner = $('#errorBanner');
+      banner.textContent = '';
+      banner.classList.remove('visible');
+    }
+
+    // -------------------------------------------------------------------------
+    // 11. 事件绑定与启动
+    // -------------------------------------------------------------------------
+
+    function bindEvents() {
+      $('#topUploadButton').addEventListener('click', openFilePicker);
+      $('#uploadZone').addEventListener('click', openFilePicker);
+      $('#uploadZone').addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openFilePicker();
+        }
+      });
+      $('#fileInput').addEventListener('change', event => loadImageFile(event.target.files?.[0]));
+      $('#sampleButton').addEventListener('click', createSampleImage);
+      $('#clearButton').addEventListener('click', clearImage);
+      $('#downloadButton').addEventListener('click', downloadResult);
+      $('#resetParamsButton').addEventListener('click', resetCurrentParameters);
+      $('#copyCodeButton').addEventListener('click', copyCurrentCode);
+
+      for (const button of $$('.operation-button')) {
+        button.addEventListener('click', () => selectOperation(button.dataset.operation));
+      }
+
+      const uploadZone = $('#uploadZone');
+      for (const eventName of ['dragenter', 'dragover']) {
+        uploadZone.addEventListener(eventName, event => {
+          event.preventDefault();
+          uploadZone.classList.add('dragging');
+        });
+      }
+      for (const eventName of ['dragleave', 'drop']) {
+        uploadZone.addEventListener(eventName, event => {
+          event.preventDefault();
+          uploadZone.classList.remove('dragging');
+        });
+      }
+      uploadZone.addEventListener('drop', event => loadImageFile(event.dataTransfer?.files?.[0]));
+
+      document.addEventListener('dragover', event => event.preventDefault());
+      document.addEventListener('drop', event => event.preventDefault());
+
+      bindPixelInspector($('#sourceCanvas'), $('#sourcePixel'));
+      bindPixelInspector($('#resultCanvas'), $('#resultPixel'));
+    }
+
+    bindEvents();
+    renderControls();
+    renderTeachingPanel();
+    resetRunMetrics();
+    renderContourTable(null);
+    initializeOpenCV();
+  </script>
+</body>
+</html>

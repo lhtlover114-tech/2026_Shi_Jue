@@ -1,0 +1,8 @@
+Third-Party Notice
+==================
+
+This package includes an OpenCV.js runtime that reports OpenCV version 4.6.0.
+OpenCV is distributed under the Apache License, Version 2.0.
+A copy of that license is provided in LICENSE-OpenCV.txt.
+
+Project information: https://opencv.org/
