@@ -6,11 +6,6 @@ import os
 import cv2
 import numpy as np
 
-try:
-    import json
-except ImportError:
-    import ujson as json
-
 from maix import app, camera, display, image, nn, time
 
 
@@ -63,105 +58,25 @@ OBJECT_POINTS = np.array(
     dtype=np.float32,
 )
 
-# 标定参数持久化路径。
-_CALIB_DIR = os.path.dirname(os.path.abspath(__file__))
-CALIB_FILE = os.path.join(_CALIB_DIR, "camera_calib.json")
+# MaixCAM2 640x480 内参。
+# 运行 calibrate_camera.py 标定后，把输出的 fx/fy 填到这里。
+CAMERA_FX = 450.0
+CAMERA_FY = 410.0
+CAMERA_CX = CAM_W / 2.0
+CAMERA_CY = CAM_H / 2.0
 
+CAMERA_MATRIX = np.array(
+    [
+        [CAMERA_FX, 0.0, CAMERA_CX],
+        [0.0, CAMERA_FY, CAMERA_CY],
+        [0.0, 0.0, 1.0],
+    ],
+    dtype=np.float64,
+)
 
-def load_camera_calib(filepath):
-    """从 JSON 文件加载相机内参；失败或文件不存在返回 None。"""
-    if not os.path.exists(filepath):
-        print("[calib] no calibration file found, using default intrinsics")
-        return None
-
-    try:
-        with open(filepath, "r") as f:
-            data = json.load(f)
-
-        fx = float(data["fx"])
-        fy = float(data["fy"])
-        cx = float(data.get("cx", CAM_W / 2.0))
-        cy = float(data.get("cy", CAM_H / 2.0))
-
-        dist_list = data.get("dist_coeffs", [0.0, 0.0, 0.0, 0.0, 0.0])
-        dist_coeffs = np.array(dist_list, dtype=np.float64).reshape(5, 1)
-
-        camera_matrix = np.array(
-            [
-                [fx, 0.0, cx],
-                [0.0, fy, cy],
-                [0.0, 0.0, 1.0],
-            ],
-            dtype=np.float64,
-        )
-
-        method = data.get("calibration_method", "unknown")
-        date = data.get("calibration_date", "unknown")
-        print(
-            "[calib] loaded fx={:.2f} fy={:.2f} "
-            "method={} date={}".format(fx, fy, method, date)
-        )
-        return camera_matrix, dist_coeffs, fx, fy
-
-    except Exception as err:
-        print("[calib] failed to load {}: {}".format(filepath, err))
-        return None
-
-
-def save_camera_params(filepath, fx, fy, cx, cy, dist_coeffs, extra_info=None):
-    """将标定结果写入 JSON 文件。"""
-    data = {
-        "fx": fx,
-        "fy": fy,
-        "cx": cx,
-        "cy": cy,
-        "dist_coeffs": (
-            dist_coeffs.flatten().tolist()
-            if isinstance(dist_coeffs, np.ndarray)
-            else list(dist_coeffs)
-        ),
-        "calibration_method": "actual_distance",
-        "image_size": [CAM_W, CAM_H],
-    }
-    if extra_info:
-        data.update(extra_info)
-
-    try:
-        with open(filepath, "w") as f:
-            json.dump(data, f)
-        print("[calib] saved to {}".format(filepath))
-
-    except Exception as err:
-        print("[calib] failed to save {}: {}".format(filepath, err))
-        print("[calib] params: fx={:.2f} fy={:.2f}".format(fx, fy))
-
-
-# 尝试加载标定内参；失败则使用视场角估算的近似值。
-_calib = load_camera_calib(CALIB_FILE)
-if _calib is not None:
-    CAMERA_MATRIX, DIST_COEFFS, CAMERA_FX, CAMERA_FY = _calib
-    CAMERA_CX = float(CAMERA_MATRIX[0, 2])
-    CAMERA_CY = float(CAMERA_MATRIX[1, 2])
-else:
-    # MaixCAM2 640x480 下的近似内参。
-    # 建议运行 calibrate_camera.py 用实际距离标定，获得更准确的 fx/fy。
-    CAMERA_FX = 520.0
-    CAMERA_FY = 520.0
-    CAMERA_CX = CAM_W / 2.0
-    CAMERA_CY = CAM_H / 2.0
-
-    CAMERA_MATRIX = np.array(
-        [
-            [CAMERA_FX, 0.0, CAMERA_CX],
-            [0.0, CAMERA_FY, CAMERA_CY],
-            [0.0, 0.0, 1.0],
-        ],
-        dtype=np.float64,
-    )
-
-    # 没有正式标定前，先假设镜头畸变为 0。
-    # 如果你后续做了棋盘格标定，把真实畸变参数替换这里。
-    DIST_COEFFS = np.zeros((5, 1), dtype=np.float64)
+# 没有正式标定前，先假设镜头畸变为 0。
+# 如果你后续做了棋盘格标定，把真实畸变参数替换这里。
+DIST_COEFFS = np.zeros((5, 1), dtype=np.float64)
 
 # 距离输出和滤波参数。
 POSE_PRINT_INTERVAL_MS = 200

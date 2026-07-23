@@ -1,4 +1,4 @@
-"""相机标定脚本：用已知距离的实际靶标定 fx/fy。
+"""基于 移植K230.py 的相机标定脚本（纯 OpenCV 检测，无 YOLO）。
 
 原理 —— 小孔成像模型：fx = 像素宽度 × 距离 / 靶实际宽度
 
@@ -11,48 +11,84 @@
 """
 
 import math
-import os
-
 import cv2
 import numpy as np
 
 from maix import camera, display, image, time
 
-# 复用 find_circle_pose 中的检测函数和常量
-from find_circle_pose import (
+# 复用 移植K230.py 的检测函数和常量
+from 移植K230 import (
     detect_rectangle,
     scale_points,
-    target_pixel_width,
-    distance_2d,
-    order_quad_points,
     CAM_W,
     CAM_H,
     PROC_W,
     PROC_H,
-    TARGET_W_MM,
-    TARGET_H_MM,
 )
 
 # ============================================================
-# 标定配置 —— 根据实际测量环境修改此列表
+# 靶尺寸 & 标定配置
 # ============================================================
 
-# 已知距离列表 (mm)，把靶依次放在这些距离处。
-# 建议覆盖比赛可能用到的全部距离范围，例如 0.5m ~ 3m。
+# 29.7 cm x 21 cm A4 横向矩形靶（单位 mm）
+TARGET_W_MM = 297.0
+TARGET_H_MM = 210.0
+
+# 已知距离列表 (mm)，把靶依次放在这些距离处
 CALIBRATION_DISTANCES_MM = [250, 500, 750, 1000, 1250]
 
-# 每个距离的采集时长 (秒)。光线好时可以设短一些。
+# 每个距离的采集时长 (秒)
 SAMPLING_DURATION_S = 3.0
 
-# 每个距离最少需要的有效检测帧数。太少则该距离被跳过。
+# 每个距离最少需要的有效检测帧数
 MIN_SAMPLES_PER_DISTANCE = 10
 
-# 摄像头预热帧数。
+# 摄像头预热帧数
 WARMUP_FRAMES = 20
 
 
+# ============================================================
+# 辅助函数（移植K230.py 中没有，这里补充）
+# ============================================================
+
+def distance_2d(first, second):
+    """两点欧氏距离。"""
+    dx = float(second[0]) - float(first[0])
+    dy = float(second[1]) - float(first[1])
+    return math.sqrt(dx * dx + dy * dy)
+
+
+def order_quad_points(points):
+    """把任意四角点排序为：左上、右上、右下、左下。"""
+    if points is None or len(points) != 4:
+        return None
+
+    pts = np.array(points, dtype=np.float32)
+    sums = pts[:, 0] + pts[:, 1]
+    diffs = pts[:, 0] - pts[:, 1]
+
+    top_left = pts[np.argmin(sums)]
+    bottom_right = pts[np.argmax(sums)]
+    top_right = pts[np.argmax(diffs)]
+    bottom_left = pts[np.argmin(diffs)]
+
+    return np.array(
+        [top_left, top_right, bottom_right, bottom_left],
+        dtype=np.float32,
+    )
+
+
+def target_pixel_width(ordered_points):
+    """横向靶宽在图像中的平均像素宽度：(上边 + 下边) / 2。"""
+    if ordered_points is None or len(ordered_points) != 4:
+        return 0.0
+    top_width = distance_2d(ordered_points[0], ordered_points[1])
+    bottom_width = distance_2d(ordered_points[3], ordered_points[2])
+    return (top_width + bottom_width) * 0.5
+
+
 def compute_pixel_height(ordered_points):
-    """计算靶在图像中的平均像素高度：(左边高 + 右边高) / 2。"""
+    """靶在图像中的平均像素高度：(左边 + 右边) / 2。"""
     if ordered_points is None or len(ordered_points) != 4:
         return 0.0
     left_height = distance_2d(ordered_points[0], ordered_points[3])
@@ -60,18 +96,12 @@ def compute_pixel_height(ordered_points):
     return (left_height + right_height) * 0.5
 
 
+# ============================================================
+# 标定核心逻辑
+# ============================================================
+
 def collect_samples(cam, target_distance_mm, duration_s, disp):
-    """在指定距离处采集若干 (像素宽度, 像素高度) 样本。
-
-    Args:
-        cam: 已初始化的 MaixCAM2 摄像头实例。
-        target_distance_mm: 当前靶距 (仅用于屏幕显示)。
-        duration_s: 采集时长 (秒)。
-        disp: MaixCAM2 显示实例。
-
-    Returns:
-        list of (pixel_width, pixel_height) 元组。
-    """
+    """在指定距离处采集若干 (像素宽度, 像素高度) 样本。"""
     samples = []
     start_ms = time.ticks_ms()
     duration_ms = int(duration_s * 1000)
@@ -106,7 +136,7 @@ def collect_samples(cam, target_distance_mm, duration_s, disp):
                 if pw > 1.0 and ph > 1.0:
                     samples.append((pw, ph))
 
-        # 在屏幕上叠加状态信息
+        # 屏幕状态叠加
         remaining_s = max(0.0, (duration_ms - elapsed) / 1000.0)
         img.draw_string(
             4, 4,
@@ -131,10 +161,7 @@ def collect_samples(cam, target_distance_mm, duration_s, disp):
 
 
 def compute_calibration(samples_by_distance):
-    """根据各距离采集的样本计算标定后的 fx / fy。
-
-    每个距离内取中位数抗干扰，各距离的 fx 取平均作为最终值。
-    """
+    """根据各距离采集的样本计算 fx / fy。"""
     print("\n" + "=" * 64)
     print("  {:>6s}  {:>7s}  {:>8s}  {:>8s}  {:>7s}  {:>7s}".format(
         "Dist", "Samples", "Med_W", "Med_H", "fx", "fy"))
@@ -181,7 +208,6 @@ def compute_calibration(samples_by_distance):
 
     print("  FINAL:  fx={:.2f}  fy={:.2f}".format(fx_final, fy_final))
 
-    # 一致性检查：各距离反推出的 fx 应该接近
     if len(fx_values) >= 2:
         fx_range = max(fx_values) - min(fx_values)
         fx_variation = fx_range / fx_final * 100.0
@@ -192,9 +218,13 @@ def compute_calibration(samples_by_distance):
     return fx_final, fy_final
 
 
+# ============================================================
+# 主入口
+# ============================================================
+
 def main():
     print("=" * 64)
-    print("  Camera Calibration  --  Actual Distance Method")
+    print("  Camera Calibration  --  Pure OpenCV (移植K230)")
     print("  Target: {:.0f} x {:.0f} mm".format(TARGET_W_MM, TARGET_H_MM))
     print("  Distances: {} mm".format(CALIBRATION_DISTANCES_MM))
     print("  Sampling: {:.1f}s per distance".format(SAMPLING_DURATION_S))
@@ -202,7 +232,6 @@ def main():
 
     disp = display.Display()
 
-    # 初始化摄像头（与 find_circle_pose.py 一致的参数）
     cam = camera.Camera(
         CAM_W, CAM_H,
         image.Format.FMT_BGR888,
@@ -220,7 +249,6 @@ def main():
                 idx + 1, len(CALIBRATION_DISTANCES_MM), distance_mm
             )
         )
-        # 给用户几秒准备时间，把靶放到指定位置
         time.sleep_ms(2000)
 
         samples = collect_samples(cam, distance_mm, SAMPLING_DURATION_S, disp)
@@ -231,10 +259,8 @@ def main():
             )
         )
 
-    # 释放摄像头
     del cam
 
-    # 计算标定结果
     result = compute_calibration(samples_by_distance)
     if result is None:
         print("[calib] calibration FAILED!")
@@ -242,7 +268,6 @@ def main():
 
     fx_final, fy_final = result
 
-    # 打印结果，用户复制到 find_circle_pose.py 中
     print("\n" + "=" * 64)
     print("  CALIBRATION DONE")
     print("  Copy these values into find_circle_pose.py:")
