@@ -203,19 +203,41 @@ def border_is_white(binary):
 def detect_rectangle(frame):
     gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
+    # ---- 路径 1: 固定阈值（适配打印黑条纹边框 L:29~43 → gray:74~110）----
+    _, fixed_binary = cv2.threshold(
+        gray, 115, 255, cv2.THRESH_BINARY_INV,
+    )
+    if border_is_white(fixed_binary):
+        fixed_binary = cv2.bitwise_not(fixed_binary)
+    result = select_quad_from_binary(fixed_binary)
+    if result is not None:
+        return result
+
+    # ---- 路径 2: Otsu 全局阈值 ----
     otsu_level, normal_binary = cv2.threshold(
         gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU
     )
 
     use_inverse = border_is_white(normal_binary)
     if use_inverse:
-        _, primary_binary = cv2.threshold(
+        _, otsu_binary = cv2.threshold(
             gray, otsu_level, 255, cv2.THRESH_BINARY_INV
         )
     else:
-        primary_binary = normal_binary
+        otsu_binary = normal_binary
+    result = select_quad_from_binary(otsu_binary)
+    if result is not None:
+        return result
 
-    return select_quad_from_binary(primary_binary)
+    # ---- 路径 3: 自适应阈值回退 ----
+    adaptive_binary = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY_INV, 21, 5,
+    )
+    if border_is_white(adaptive_binary):
+        adaptive_binary = cv2.bitwise_not(adaptive_binary)
+    return select_quad_from_binary(adaptive_binary)
 
 
 def draw_overlay(img, points, center, fps):

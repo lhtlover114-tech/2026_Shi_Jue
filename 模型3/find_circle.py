@@ -220,7 +220,18 @@ def detect_rectangle(frame_bgr):
     gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
 
-    # ---- 主路径：Otsu 全局阈值（适合中近距离、目标占比大）----
+    # ---- 路径 1: 固定阈值（适配打印黑条纹边框 L:29~43 → gray:74~110）----
+    # 取略高于 L=43 对应灰度值作为阈值，保证边框像素被捕获。
+    _, fixed_binary = cv2.threshold(
+        gray, 115, 255, cv2.THRESH_BINARY_INV,
+    )
+    if border_is_white(fixed_binary):
+        fixed_binary = cv2.bitwise_not(fixed_binary)
+    result = select_quad_from_binary(fixed_binary)
+    if result is not None:
+        return result
+
+    # ---- 路径 2: Otsu 全局阈值（适合中近距离、目标占比大）----
     otsu_level, normal_binary = cv2.threshold(
         gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU
     )
@@ -236,16 +247,17 @@ def detect_rectangle(frame_bgr):
     if result is not None:
         return result
 
-    # ---- 回退：自适应阈值（适合远距离、目标占比小的场景）----
+    # ---- 路径 3: 自适应阈值回退（适合远距离、目标占比小的场景）----
     # 当 Otsu 没找到目标时，很可能是目标在画面中占比太小，
     # Otsu 被背景像素主导从而选错了阈值。此时用局部自适应阈值重试。
+    # C 从 9 降至 5：打印边框对比度比电工胶带低，需要更小的常数减量。
     adaptive_binary = cv2.adaptiveThreshold(
         gray,
         255,
         cv2.ADAPTIVE_THRESH_MEAN_C,
         cv2.THRESH_BINARY_INV,
         21,   # blockSize — 大于高斯核，覆盖足够上下文
-        9,    # C — 适当提高以抑制局部纹理噪声
+        5,    # C — 降低以适配淡色边框
     )
 
     if border_is_white(adaptive_binary):

@@ -261,17 +261,46 @@ def border_is_white(binary):
 def detect_rectangle(frame_bgr):
     gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
+    # ---- 路径 1: 固定阈值（适配打印黑条纹边框 L:29~43 → gray:74~110）----
+    # 取略高于 L=43 对应灰度值作为阈值，保证边框像素被捕获。
+    _, fixed_binary = cv2.threshold(
+        gray, 120, 255, cv2.THRESH_BINARY_INV,
+    )
+    if border_is_white(fixed_binary):
+        fixed_binary = cv2.bitwise_not(fixed_binary)
+    result = select_quad_from_binary(fixed_binary)
+    if result is not None:
+        return result
+
+    # ---- 路径 2: Otsu 全局阈值（适合中近距离、目标占比大）----
     otsu_level, normal_binary = cv2.threshold(
         gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU
     )
 
     if border_is_white(normal_binary):
-        _, binary = cv2.threshold(
+        _, otsu_binary = cv2.threshold(
             gray, otsu_level, 255, cv2.THRESH_BINARY_INV
         )
     else:
-        binary = normal_binary
-    return select_quad_from_binary(binary)
+        otsu_binary = normal_binary
+    result = select_quad_from_binary(otsu_binary)
+    if result is not None:
+        return result
+
+    # ---- 路径 3: 自适应阈值回退（适配远距离、低对比度场景）----
+    # C 从 9 降至 5：打印边框对比度比电工胶带低，需要更小的常数减量。
+    adaptive_binary = cv2.adaptiveThreshold(
+        gray,
+        255,
+        cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY_INV,
+        21,   # blockSize
+        3,    # C — 降低以适配淡色边框
+    )
+    if border_is_white(adaptive_binary):
+        adaptive_binary = cv2.bitwise_not(adaptive_binary)
+    return select_quad_from_binary(adaptive_binary)
 
 
 def scale_points(points, src_w, src_h, dst_w, dst_h):
@@ -428,11 +457,120 @@ WARP_W = 594  # 2 px/mm × 297mm
 WARP_H = 420  # 2 px/mm × 210mm
 
 
-def measure_internal_shapes(frame_bgr, quad_points):
-    """透视校正 A4 纸区域后检测内部圆和矩形，返回 mm 尺寸。
+def _extract_internal_rects(binary, gray_warped, px_per_mm, mat_back):
+    """从已去除边框的二值图中提取内部矩形，返回 rect 列表。"""
+    bh, bw = binary.shape[:2]
 
-    通过漫水填充去除 A4 纸外边框干扰，再用 Canny 边缘检测 +
-    HoughCircles 找圆，用 findContours 找内部矩形。
+    # ---- 漫水填充：去除 A4 纸外边框 ----
+    mask = np.zeros((bh + 2, bw + 2), np.uint8)
+    corners = [(2, 2), (bw - 3, 2), (2, bh - 3), (bw - 3, bh - 3)]
+    edges = [
+        (bw // 2, 2), (bw // 2, bh - 3),
+        (2, bh // 2), (bw - 3, bh // 2),
+    ]
+    for cx, cy in corners + edges:
+        cv2.floodFill(binary, mask, (cx, cy), 0, loDiff=10, upDiff=10, flags=4)
+
+    # 形态学开运算：清除填充后残留的细碎边框线
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+
+    EDGE_MARGIN_INTERNAL = 15
+    MIN_SIDE_MM = 5.0
+    rects = []
+
+    contour_result = cv2.findContours(
+        binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
+    )
+    contours = contour_result[-2] if len(contour_result) >= 2 else []
+
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area < 200 or area > bw * bh * 0.85:
+            continue
+
+        bx, by, bwidth, bheight = cv2.boundingRect(contour)
+        if (bx < EDGE_MARGIN_INTERNAL or by < EDGE_MARGIN_INTERNAL
+                or bx + bwidth > bw - EDGE_MARGIN_INTERNAL
+                or by + bheight > bh - EDGE_MARGIN_INTERNAL):
+            continue
+
+        if not cv2.isContourConvex(contour):
+            continue
+
+        perimeter = cv2.arcLength(contour, True)
+        if perimeter <= 0:
+            continue
+        approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
+        if len(approx) != 4:
+            continue
+
+        pts = approx.reshape(4, 2).astype(np.float32)
+
+        # ---- 亚像素角点精化 ----
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 0.01)
+        cv2.cornerSubPix(gray_warped, pts, (5, 5), (-1, -1), criteria)
+
+        ordered_rect = order_quad_points(
+            [(int(round(p[0])), int(round(p[1]))) for p in pts]
+        )
+        if ordered_rect is None:
+            continue
+
+        # ---- 角点几何校验 ----
+        ok = True
+        for i in range(4):
+            p_prev = ordered_rect[(i - 1) % 4]
+            p_curr = ordered_rect[i]
+            p_next = ordered_rect[(i + 1) % 4]
+
+            v1 = p_prev.astype(np.float32) - p_curr.astype(np.float32)
+            v2 = p_next.astype(np.float32) - p_curr.astype(np.float32)
+            n1 = float(np.linalg.norm(v1))
+            n2 = float(np.linalg.norm(v2))
+            if n1 < 3.0 or n2 < 3.0:
+                ok = False
+                break
+
+            cos_angle = float(np.dot(v1, v2)) / (n1 * n2)
+            if abs(cos_angle) > 0.5:
+                ok = False
+                break
+        if not ok:
+            continue
+
+        # 四条边长 (mm) — 用精化后的浮点坐标计算
+        sides_mm = []
+        for i in range(4):
+            p1 = ordered_rect[i].astype(np.float32)
+            p2 = ordered_rect[(i + 1) % 4].astype(np.float32)
+            side_px = float(np.linalg.norm(p2 - p1))
+            sides_mm.append(round(side_px / px_per_mm, 1))
+
+        a_mm = round((sides_mm[0] + sides_mm[2]) / 2.0, 1)
+        b_mm = round((sides_mm[1] + sides_mm[3]) / 2.0, 1)
+        if a_mm < MIN_SIDE_MM or b_mm < MIN_SIDE_MM:
+            continue
+
+        orig_corners = cv2.perspectiveTransform(
+            ordered_rect.reshape(1, 4, 2).astype(np.float32), mat_back,
+        )[0]
+        orig_corners = [(int(round(p[0])), int(round(p[1]))) for p in orig_corners]
+
+        rects.append({
+            "a_mm": a_mm,
+            "b_mm": b_mm,
+            "sides_mm": sides_mm,
+            "orig_corners": orig_corners,
+        })
+
+    return rects
+
+
+def measure_internal_shapes(frame_bgr, quad_points):
+    """透视校正 A4 纸区域后检测内部矩形，返回 mm 尺寸。
+
+    三路径级联：固定阈值 → OTSU → 自适应阈值。
     """
     ordered = order_quad_points(quad_points)
     if ordered is None:
@@ -440,7 +578,6 @@ def measure_internal_shapes(frame_bgr, quad_points):
 
     px_per_mm = WARP_W / TARGET_W_MM  # = 2.0
 
-    # 透视变换矩阵（原图 → 俯视图 / 俯视图 → 原图）
     src = ordered.astype(np.float32)
     dst = np.array(
         [
@@ -458,68 +595,28 @@ def measure_internal_shapes(frame_bgr, quad_points):
     gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
 
-    # 自适应二值化：黑图形在白纸上 → 白图形在黑底
-    binary = cv2.adaptiveThreshold(
+    # ---- 路径 1: 固定阈值（打印黑线灰度 < 105）----
+    _, binary = cv2.threshold(gray, 105, 255, cv2.THRESH_BINARY_INV)
+    rects = _extract_internal_rects(binary, gray, px_per_mm, mat_back)
+    if rects:
+        return {"rects": rects}
+
+    # ---- 路径 2: OTSU 全局阈值 ----
+    otsu_level, _ = cv2.threshold(
+        gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU,
+    )
+    _, otsu_binary = cv2.threshold(gray, otsu_level, 255, cv2.THRESH_BINARY_INV)
+    rects = _extract_internal_rects(otsu_binary, gray, px_per_mm, mat_back)
+    if rects:
+        return {"rects": rects}
+
+    # ---- 路径 3: 自适应阈值回退（降低 C 适配淡色打印）----
+    adaptive_binary = cv2.adaptiveThreshold(
         gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-        cv2.THRESH_BINARY_INV, 27, 31,
+        cv2.THRESH_BINARY_INV, 21, 5,
     )
-
-    # ---- 漫水填充：去除 A4 纸外边框 ----
-    # 纸的黑边框在 binary 中是白色（前景），从四角灌入黑色消除它。
-    bh, bw = binary.shape[:2]
-    mask = np.zeros((bh + 2, bw + 2), np.uint8)
-    corners = [(2, 2), (bw - 3, 2), (2, bh - 3), (bw - 3, bh - 3)]
-    for cx, cy in corners:
-        cv2.floodFill(binary, mask, (cx, cy), 0, loDiff=5, upDiff=5, flags=4)
-
-    result = {"rects": []}
-
-    # ---- 矩形检测（用去边框后的 binary） ----
-    contour_result = cv2.findContours(
-        binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
-    )
-    contours = contour_result[-2] if len(contour_result) >= 2 else []
-
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        # 过滤噪声和过大轮廓（接近整张纸的轮廓是残余边框）
-        if area < 200 or area > bw * bh * 0.85:
-            continue
-        perimeter = cv2.arcLength(contour, True)
-        if perimeter <= 0:
-            continue
-        approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
-        if len(approx) != 4:
-            continue
-
-        pts = approx.reshape(4, 2)
-        ordered_rect = order_quad_points(
-            [(int(p[0]), int(p[1])) for p in pts]
-        )
-        if ordered_rect is None:
-            continue
-
-        # 四条边长 (mm)
-        sides_mm = []
-        for i in range(4):
-            p1, p2 = ordered_rect[i], ordered_rect[(i + 1) % 4]
-            side_px = float(np.linalg.norm(p2 - p1))
-            sides_mm.append(round(side_px / px_per_mm, 1))
-
-        # 角点映射回原图
-        orig_corners = cv2.perspectiveTransform(
-            ordered_rect.reshape(1, 4, 2).astype(np.float32), mat_back,
-        )[0]
-        orig_corners = [(int(p[0]), int(p[1])) for p in orig_corners]
-
-        result["rects"].append({
-            "a_mm": round((sides_mm[0] + sides_mm[2]) / 2.0, 1),
-            "b_mm": round((sides_mm[1] + sides_mm[3]) / 2.0, 1),
-            "sides_mm": sides_mm,
-            "orig_corners": orig_corners,
-        })
-
-    return result
+    rects = _extract_internal_rects(adaptive_binary, gray, px_per_mm, mat_back)
+    return {"rects": rects}
 
 
 def update_rescue_schedule(miss_streak, cooldown, opencv_valid, yolo_enabled):
@@ -561,7 +658,7 @@ class FindRectCircle:
     debug_draw_err_line = True
     debug_draw_err_msg = False
     debug_draw_circle = False
-    debug_draw_rect = False
+    debug_draw_rect = True
     debug_show_hires = False
 
     # 兼容旧移植契约；新的主路径固定使用 640x480 OpenCV 图像。
