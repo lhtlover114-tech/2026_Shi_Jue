@@ -418,6 +418,110 @@ def estimate_target_pose(points):
         "image_points": image_points,
     }
 
+
+# =========================
+# A4 纸内部几何图形测量
+# =========================
+# 透视校正后测量 A4 纸内部的圆（直径）和矩形（边长），单位 mm。
+
+WARP_W = 594  # 2 px/mm × 297mm
+WARP_H = 420  # 2 px/mm × 210mm
+
+
+def measure_internal_shapes(frame_bgr, quad_points):
+    """透视校正 A4 纸区域后检测内部圆和矩形，返回 mm 尺寸。
+
+    通过漫水填充去除 A4 纸外边框干扰，再用 Canny 边缘检测 +
+    HoughCircles 找圆，用 findContours 找内部矩形。
+    """
+    ordered = order_quad_points(quad_points)
+    if ordered is None:
+        return None
+
+    px_per_mm = WARP_W / TARGET_W_MM  # = 2.0
+
+    # 透视变换矩阵（原图 → 俯视图 / 俯视图 → 原图）
+    src = ordered.astype(np.float32)
+    dst = np.array(
+        [
+            [0, 0],
+            [WARP_W - 1, 0],
+            [WARP_W - 1, WARP_H - 1],
+            [0, WARP_H - 1],
+        ],
+        dtype=np.float32,
+    )
+    mat_forward = cv2.getPerspectiveTransform(src, dst)
+    mat_back = cv2.getPerspectiveTransform(dst, src)
+
+    warped = cv2.warpPerspective(frame_bgr, mat_forward, (WARP_W, WARP_H))
+    gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
+    # 自适应二值化：黑图形在白纸上 → 白图形在黑底
+    binary = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY_INV, 27, 31,
+    )
+
+    # ---- 漫水填充：去除 A4 纸外边框 ----
+    # 纸的黑边框在 binary 中是白色（前景），从四角灌入黑色消除它。
+    bh, bw = binary.shape[:2]
+    mask = np.zeros((bh + 2, bw + 2), np.uint8)
+    corners = [(2, 2), (bw - 3, 2), (2, bh - 3), (bw - 3, bh - 3)]
+    for cx, cy in corners:
+        cv2.floodFill(binary, mask, (cx, cy), 0, loDiff=5, upDiff=5, flags=4)
+
+    result = {"rects": []}
+
+    # ---- 矩形检测（用去边框后的 binary） ----
+    contour_result = cv2.findContours(
+        binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
+    )
+    contours = contour_result[-2] if len(contour_result) >= 2 else []
+
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        # 过滤噪声和过大轮廓（接近整张纸的轮廓是残余边框）
+        if area < 200 or area > bw * bh * 0.85:
+            continue
+        perimeter = cv2.arcLength(contour, True)
+        if perimeter <= 0:
+            continue
+        approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
+        if len(approx) != 4:
+            continue
+
+        pts = approx.reshape(4, 2)
+        ordered_rect = order_quad_points(
+            [(int(p[0]), int(p[1])) for p in pts]
+        )
+        if ordered_rect is None:
+            continue
+
+        # 四条边长 (mm)
+        sides_mm = []
+        for i in range(4):
+            p1, p2 = ordered_rect[i], ordered_rect[(i + 1) % 4]
+            side_px = float(np.linalg.norm(p2 - p1))
+            sides_mm.append(round(side_px / px_per_mm, 1))
+
+        # 角点映射回原图
+        orig_corners = cv2.perspectiveTransform(
+            ordered_rect.reshape(1, 4, 2).astype(np.float32), mat_back,
+        )[0]
+        orig_corners = [(int(p[0]), int(p[1])) for p in orig_corners]
+
+        result["rects"].append({
+            "a_mm": round((sides_mm[0] + sides_mm[2]) / 2.0, 1),
+            "b_mm": round((sides_mm[1] + sides_mm[3]) / 2.0, 1),
+            "sides_mm": sides_mm,
+            "orig_corners": orig_corners,
+        })
+
+    return result
+
+
 def update_rescue_schedule(miss_streak, cooldown, opencv_valid, yolo_enabled):
     """推进一次复核状态；冷却中的完整采集帧不能触发 YOLO。"""
     was_cooling = cooldown > 0
@@ -703,7 +807,7 @@ class FindRectCircle:
         )
         self.pose_print_tick = now_ms
 
-    def _draw_result(self, img, points, center, pose=None):
+    def _draw_result(self, img, points, center, pose=None, measurements=None):
         if points is not None and self.debug_draw_rect:
             for index in range(4):
                 x1, y1 = points[index]
@@ -732,10 +836,11 @@ class FindRectCircle:
                 thickness=2,
             )
 
+        # 姿态信息
+        line_y = 2
         if pose is not None:
             img.draw_string(
-                2,
-                2,
+                2, line_y,
                 "x:{:.0f} z:{:.0f} a:{:.1f}".format(
                     pose["x_mm"],
                     pose["z_mm"],
@@ -745,6 +850,22 @@ class FindRectCircle:
                 scale=1.3,
                 thickness=2,
             )
+            line_y += 22
+
+        # 内部图形测量
+        if measurements is not None:
+            for rect in measurements.get("rects", []):
+                corners = rect["orig_corners"]
+                for i in range(4):
+                    x1, y1 = corners[i]
+                    x2, y2 = corners[(i + 1) % 4]
+                    img.draw_line(x1, y1, x2, y2, image.COLOR_RED, thickness=2)
+                img.draw_string(
+                    2, line_y,
+                    "W:{:.1f} H:{:.1f}mm".format(rect["a_mm"], rect["b_mm"]),
+                    image.COLOR_RED, scale=1.2, thickness=2,
+                )
+                line_y += 20
 
         self.disp.show(img)
 
@@ -808,13 +929,19 @@ class FindRectCircle:
         raw_pose = estimate_target_pose(points) if points is not None else None
         pose = self._update_pose_filter(raw_pose)
 
+        measurements = (
+            measure_internal_shapes(frame_bgr, points)
+            if points is not None
+            else None
+        )
+
         if center is not None:
             self.last_center = self._to_legacy_center(center)
             self.err_center = self._to_legacy_error(center)
             self.updated = True
 
         self.last_circle3_points = []
-        self._draw_result(img, points, center, pose)
+        self._draw_result(img, points, center, pose, measurements)
 
         now_ms = time.ticks_ms()
         self._update_model_policy(now_ms)
