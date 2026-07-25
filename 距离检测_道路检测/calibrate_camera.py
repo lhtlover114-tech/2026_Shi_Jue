@@ -5,7 +5,7 @@
 使用方法：
   1. 修改下方 CALIBRATION_DISTANCES_MM 为你要测量的实际距离（mm）
   2. 在 MaixCAM2 上运行此脚本
-  3. 按照屏幕提示，把 29.7cm×21cm 靶依次放在每个距离处
+  3. 按照屏幕提示，把 25.5cm×17cm 靶依次放在每个距离处
   4. 每个距离保持稳定，脚本自动采集若干帧后跳到下一个距离
   5. 运行结束后复制输出的 fx/fy，手动填到 find_circle_pose.py 中
 """
@@ -39,7 +39,7 @@ from find_circle_pose import (
 
 # 已知距离列表 (mm)，把靶依次放在这些距离处。
 # 建议覆盖比赛可能用到的全部距离范围，例如 0.5m ~ 3m。
-CALIBRATION_DISTANCES_MM = [250, 500, 750, 1000, 1250]
+CALIBRATION_DISTANCES_MM = [300, 500, 700, 1000, 1000]
 
 # 每个距离的采集时长 (秒)。光线好时可以设短一些。
 SAMPLING_DURATION_S = 3.0

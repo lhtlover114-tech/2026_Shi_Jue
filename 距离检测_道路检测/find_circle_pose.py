@@ -506,29 +506,91 @@ def measure_internal_shapes(frame_bgr, quad_points, pose=None):
 
         s_approx = cv2.approxPolyDP(sc, 0.02 * s_peri, True)
         n_vertices = len(s_approx)
-        if n_vertices not in (3, 4):
-            continue
 
         sx, sy, sw, sh = cv2.boundingRect(sc)
         sx_orig = bx + sx
         sy_orig = by + sy
 
-        # 3. 用相似三角形公式估算物理尺寸
-        #     实物宽度 / 距离 = 像素宽度 / fx  →  实物宽度 = 像素宽度 × 距离 / fx
-        width_mm = None
-        height_mm = None
-        if pose is not None and pose.get("z_mm", 0) > 0:
-            width_mm = (sw * pose["z_mm"]) / CAMERA_FX
-            height_mm = (sh * pose["z_mm"]) / CAMERA_FY
+        # ---- 形状分类 ----
+        if n_vertices == 3:
+            # 三角形：提取 3 个顶点，亚像素精化，计算三条边长
+            tri_pts = s_approx.reshape(3, 2).astype(np.float32)
 
-        shape_type = "tri" if n_vertices == 3 else "rect"
+            # 亚像素角点精化
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
+                        20, 0.001)
+            cv2.cornerSubPix(roi_gray, tri_pts, (3, 3), (-1, -1), criteria)
 
-        shapes.append({
-            "type": shape_type,
-            "bbox": (sx_orig, sy_orig, sw, sh),
-            "width_mm": width_mm,
-            "height_mm": height_mm,
-        })
+            # 计算三条边长 (px)，考虑 fx/fy 差异
+            sides_px = []
+            sides_mm = []
+            for i in range(3):
+                p1 = tri_pts[i]
+                p2 = tri_pts[(i + 1) % 3]
+                dx = float(p2[0] - p1[0])
+                dy = float(p2[1] - p1[1])
+                side_px = math.hypot(dx, dy)
+                sides_px.append(round(side_px, 1))
+
+                # 物理边长：考虑 fx/fy 差异
+                if pose is not None and pose.get("z_mm", 0) > 0:
+                    z = pose["z_mm"]
+                    side_mm = math.hypot(
+                        dx * z / CAMERA_FX,
+                        dy * z / CAMERA_FY,
+                    )
+                    sides_mm.append(round(side_mm, 1))
+
+            # 顶点映射到原始图像坐标
+            tri_pts_orig = [
+                (bx + int(round(p[0])), by + int(round(p[1])))
+                for p in tri_pts
+            ]
+
+            shapes.append({
+                "type": "tri",
+                "vertices": tri_pts_orig,
+                "sides_px": sides_px,
+                "sides_mm": sides_mm if sides_mm else None,
+                "bbox": (sx_orig, sy_orig, sw, sh),
+            })
+
+        elif n_vertices == 4:
+            # 矩形：用 bounding box 宽高估算
+            width_mm = None
+            height_mm = None
+            if pose is not None and pose.get("z_mm", 0) > 0:
+                width_mm = (sw * pose["z_mm"]) / CAMERA_FX
+                height_mm = (sh * pose["z_mm"]) / CAMERA_FY
+
+            shapes.append({
+                "type": "rect",
+                "bbox": (sx_orig, sy_orig, sw, sh),
+                "width_mm": width_mm,
+                "height_mm": height_mm,
+            })
+
+        else:
+            # ---- 圆形度判断：4π·area / perimeter²，正圆=1.0 ----
+            circularity = (4.0 * math.pi * s_area) / (s_peri * s_peri)
+            if circularity < 0.78:
+                continue  # 既不是多边形也不是圆，跳过
+
+            (cx, cy), radius = cv2.minEnclosingCircle(sc)
+            cx_orig = bx + int(cx)
+            cy_orig = by + int(cy)
+            r_px = int(radius)
+            diameter_mm = None
+            if pose is not None and pose.get("z_mm", 0) > 0:
+                diameter_mm = (2.0 * r_px * pose["z_mm"]) / CAMERA_FX
+
+            shapes.append({
+                "type": "circle",
+                "center": (cx_orig, cy_orig),
+                "radius_px": r_px,
+                "diameter_mm": diameter_mm,
+                "bbox": (sx_orig, sy_orig, sw, sh),
+            })
 
     return {"shapes": shapes} if shapes else None
 
@@ -866,21 +928,58 @@ class FindRectCircle:
         # 内部图形测量
         if measurements is not None:
             for shape in measurements.get("shapes", []):
-                sx, sy, sw, sh = shape["bbox"]
-                # 参考代码风格：直接画 bounding rect
-                img.draw_rect(sx, sy, sw, sh,
-                              image.Color.from_rgb(255, 0, 0), 2)
-                shape_name = "tri" if shape["type"] == "tri" else "rect"
-                label = "{}".format(shape_name)
-                w = shape.get("width_mm")
-                h = shape.get("height_mm")
-                if w is not None and h is not None:
-                    label += " {:.1f}x{:.1f}mm".format(w, h)
-                elif w is not None:
-                    label += " w={:.1f}mm".format(w)
-                img.draw_string(sx, sy - 15, label,
-                                image.Color.from_rgb(255, 0, 0),
-                                scale=1.2, thickness=2)
+                shape_type = shape["type"]
+                has_bbox = "bbox" in shape
+                if has_bbox:
+                    sx, sy, sw, sh = shape["bbox"]
+
+                if shape_type == "circle":
+                    # 画圆
+                    cx, cy = shape["center"]
+                    r = shape["radius_px"]
+                    img.draw_circle(cx, cy, r,
+                                    image.Color.from_rgb(255, 0, 0), 2)
+                    label = "circle"
+                    d = shape.get("diameter_mm")
+                    if d is not None:
+                        label += " D={:.1f}mm".format(d)
+                    img.draw_string(cx - 30, cy - r - 18, label,
+                                    image.Color.from_rgb(255, 0, 0),
+                                    scale=1.2, thickness=2)
+                elif shape_type == "tri":
+                    # 三角形：画三条边的轮廓，标注边长
+                    verts = shape["vertices"]
+                    for i in range(3):
+                        x1, y1 = verts[i]
+                        x2, y2 = verts[(i + 1) % 3]
+                        img.draw_line(x1, y1, x2, y2,
+                                      image.Color.from_rgb(255, 0, 0), 2)
+                    label = "tri"
+                    sides = shape.get("sides_mm")
+                    if sides:
+                        label += " a={:.1f} b={:.1f} c={:.1f}mm".format(
+                            sides[0], sides[1], sides[2])
+                    # 标签放在三角形最上方顶点之上
+                    top_y = min(v[1] for v in verts)
+                    top_x = sum(v[0] for v in verts) // 3
+                    img.draw_string(top_x - 50, top_y - 18, label,
+                                    image.Color.from_rgb(255, 0, 0),
+                                    scale=1.2, thickness=2)
+
+                else:
+                    # 矩形：画 bounding rect
+                    img.draw_rect(sx, sy, sw, sh,
+                                  image.Color.from_rgb(255, 0, 0), 2)
+                    label = "rect"
+                    w = shape.get("width_mm")
+                    h = shape.get("height_mm")
+                    if w is not None and h is not None:
+                        label += " {:.1f}x{:.1f}mm".format(w, h)
+                    elif w is not None:
+                        label += " w={:.1f}mm".format(w)
+                    img.draw_string(sx, sy - 15, label,
+                                    image.Color.from_rgb(255, 0, 0),
+                                    scale=1.2, thickness=2)
 
         self.disp.show(img)
 
