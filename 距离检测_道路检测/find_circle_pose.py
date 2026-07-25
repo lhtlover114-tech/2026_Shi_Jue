@@ -41,11 +41,11 @@ MODEL_DISABLE_MAX_RESCUE_RATIO = 0.10
 
 
 # =========================
-# 29.7 cm x 21 cm A4 横向矩形靶测距参数
+# 25.5 cm x 17 cm A4 横向矩形靶测距参数
 # =========================
 # 单位统一使用 mm，避免 cm / mm 混用。
-TARGET_W_MM = 297.0
-TARGET_H_MM = 210.0
+TARGET_W_MM = 255.0
+TARGET_H_MM = 170.0
 
 # 物理角点顺序必须与图像角点顺序一致：左上、右上、右下、左下。
 OBJECT_POINTS = np.array(
@@ -60,8 +60,8 @@ OBJECT_POINTS = np.array(
 
 # MaixCAM2 640x480 内参。
 # 运行 calibrate_camera.py 标定后，把输出的 fx/fy 填到这里。
-CAMERA_FX = 450.0
-CAMERA_FY = 410.0
+CAMERA_FX = 508.0
+CAMERA_FY = 504.0
 CAMERA_CX = CAM_W / 2.0
 CAMERA_CY = CAM_H / 2.0
 
@@ -453,170 +453,84 @@ def estimate_target_pose(points):
 # =========================
 # 透视校正后测量 A4 纸内部的圆（直径）和矩形（边长），单位 mm。
 
-WARP_W = 594  # 2 px/mm × 297mm
-WARP_H = 420  # 2 px/mm × 210mm
+def measure_internal_shapes(frame_bgr, quad_points, pose=None):
+    """在 A4 纸 bounding box 内检测黑色图形（矩形/三角形），返回像素坐标和估算物理尺寸。
 
-
-def _extract_internal_rects(binary, gray_warped, px_per_mm, mat_back):
-    """从已去除边框的二值图中提取内部矩形，返回 rect 列表。"""
-    bh, bw = binary.shape[:2]
-
-    # ---- 漫水填充：去除 A4 纸外边框 ----
-    mask = np.zeros((bh + 2, bw + 2), np.uint8)
-    corners = [(2, 2), (bw - 3, 2), (2, bh - 3), (bw - 3, bh - 3)]
-    edges = [
-        (bw // 2, 2), (bw // 2, bh - 3),
-        (2, bh // 2), (bw - 3, bh // 2),
-    ]
-    for cx, cy in corners + edges:
-        cv2.floodFill(binary, mask, (cx, cy), 0, loDiff=10, upDiff=10, flags=4)
-
-    # 形态学开运算：清除填充后残留的细碎边框线
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
-
-    EDGE_MARGIN_INTERNAL = 15
-    MIN_SIDE_MM = 5.0
-    rects = []
-
-    contour_result = cv2.findContours(
-        binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
-    )
-    contours = contour_result[-2] if len(contour_result) >= 2 else []
-
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if area < 200 or area > bw * bh * 0.85:
-            continue
-
-        bx, by, bwidth, bheight = cv2.boundingRect(contour)
-        if (bx < EDGE_MARGIN_INTERNAL or by < EDGE_MARGIN_INTERNAL
-                or bx + bwidth > bw - EDGE_MARGIN_INTERNAL
-                or by + bheight > bh - EDGE_MARGIN_INTERNAL):
-            continue
-
-        if not cv2.isContourConvex(contour):
-            continue
-
-        perimeter = cv2.arcLength(contour, True)
-        if perimeter <= 0:
-            continue
-        approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
-        if len(approx) != 4:
-            continue
-
-        pts = approx.reshape(4, 2).astype(np.float32)
-
-        # ---- 亚像素角点精化 ----
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 0.01)
-        cv2.cornerSubPix(gray_warped, pts, (5, 5), (-1, -1), criteria)
-
-        ordered_rect = order_quad_points(
-            [(int(round(p[0])), int(round(p[1]))) for p in pts]
-        )
-        if ordered_rect is None:
-            continue
-
-        # ---- 角点几何校验 ----
-        ok = True
-        for i in range(4):
-            p_prev = ordered_rect[(i - 1) % 4]
-            p_curr = ordered_rect[i]
-            p_next = ordered_rect[(i + 1) % 4]
-
-            v1 = p_prev.astype(np.float32) - p_curr.astype(np.float32)
-            v2 = p_next.astype(np.float32) - p_curr.astype(np.float32)
-            n1 = float(np.linalg.norm(v1))
-            n2 = float(np.linalg.norm(v2))
-            if n1 < 3.0 or n2 < 3.0:
-                ok = False
-                break
-
-            cos_angle = float(np.dot(v1, v2)) / (n1 * n2)
-            if abs(cos_angle) > 0.5:
-                ok = False
-                break
-        if not ok:
-            continue
-
-        # 四条边长 (mm) — 用精化后的浮点坐标计算
-        sides_mm = []
-        for i in range(4):
-            p1 = ordered_rect[i].astype(np.float32)
-            p2 = ordered_rect[(i + 1) % 4].astype(np.float32)
-            side_px = float(np.linalg.norm(p2 - p1))
-            sides_mm.append(round(side_px / px_per_mm, 1))
-
-        a_mm = round((sides_mm[0] + sides_mm[2]) / 2.0, 1)
-        b_mm = round((sides_mm[1] + sides_mm[3]) / 2.0, 1)
-        if a_mm < MIN_SIDE_MM or b_mm < MIN_SIDE_MM:
-            continue
-
-        orig_corners = cv2.perspectiveTransform(
-            ordered_rect.reshape(1, 4, 2).astype(np.float32), mat_back,
-        )[0]
-        orig_corners = [(int(round(p[0])), int(round(p[1]))) for p in orig_corners]
-
-        rects.append({
-            "a_mm": a_mm,
-            "b_mm": b_mm,
-            "sides_mm": sides_mm,
-            "orig_corners": orig_corners,
-        })
-
-    return rects
-
-
-def measure_internal_shapes(frame_bgr, quad_points):
-    """透视校正 A4 纸区域后检测内部矩形，返回 mm 尺寸。
-
-    三路径级联：固定阈值 → OTSU → 自适应阈值。
+    流程：
+    1. 用 A4 四角点算出外接矩形，向内缩一点排除外边框
+    2. 截取 ROI → 灰度 → 固定阈值二值化
+    3. 找轮廓 → 多边形逼近 → 只保留三角形和四边形
+    4. 用相似三角形公式 (sw * D) / fx 估算物理宽度
     """
-    ordered = order_quad_points(quad_points)
-    if ordered is None:
+    if quad_points is None or len(quad_points) != 4:
         return None
 
-    px_per_mm = WARP_W / TARGET_W_MM  # = 2.0
+    # 1. 计算 bounding box，向内收缩以排除 A4 纸外边框
+    xs = [p[0] for p in quad_points]
+    ys = [p[1] for p in quad_points]
+    bx = int(min(xs))
+    by = int(min(ys))
+    bw = int(max(xs) - bx)
+    bh = int(max(ys) - by)
 
-    src = ordered.astype(np.float32)
-    dst = np.array(
-        [
-            [0, 0],
-            [WARP_W - 1, 0],
-            [WARP_W - 1, WARP_H - 1],
-            [0, WARP_H - 1],
-        ],
-        dtype=np.float32,
+    BORDER_SHRINK = 12  # 向内缩 12px，跳过外边框
+    bx += BORDER_SHRINK
+    by += BORDER_SHRINK
+    bw -= 2 * BORDER_SHRINK
+    bh -= 2 * BORDER_SHRINK
+
+    if bw <= 20 or bh <= 20:
+        return None
+
+    # 2. 截取 ROI 并二值化
+    roi = frame_bgr[by:by + bh, bx:bx + bw]
+    if roi.size == 0:
+        return None
+
+    roi_gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    _, roi_bin = cv2.threshold(roi_gray, 100, 255, cv2.THRESH_BINARY_INV)
+
+    contours_s, _ = cv2.findContours(
+        roi_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
     )
-    mat_forward = cv2.getPerspectiveTransform(src, dst)
-    mat_back = cv2.getPerspectiveTransform(dst, src)
 
-    warped = cv2.warpPerspective(frame_bgr, mat_forward, (WARP_W, WARP_H))
-    gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    shapes = []
+    for sc in contours_s:
+        s_area = cv2.contourArea(sc)
+        if s_area < 200:
+            continue
 
-    # ---- 路径 1: 固定阈值（打印黑线灰度 < 105）----
-    _, binary = cv2.threshold(gray, 105, 255, cv2.THRESH_BINARY_INV)
-    rects = _extract_internal_rects(binary, gray, px_per_mm, mat_back)
-    if rects:
-        return {"rects": rects}
+        s_peri = cv2.arcLength(sc, True)
+        if s_peri <= 0:
+            continue
 
-    # ---- 路径 2: OTSU 全局阈值 ----
-    otsu_level, _ = cv2.threshold(
-        gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU,
-    )
-    _, otsu_binary = cv2.threshold(gray, otsu_level, 255, cv2.THRESH_BINARY_INV)
-    rects = _extract_internal_rects(otsu_binary, gray, px_per_mm, mat_back)
-    if rects:
-        return {"rects": rects}
+        s_approx = cv2.approxPolyDP(sc, 0.02 * s_peri, True)
+        n_vertices = len(s_approx)
+        if n_vertices not in (3, 4):
+            continue
 
-    # ---- 路径 3: 自适应阈值回退（降低 C 适配淡色打印）----
-    adaptive_binary = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-        cv2.THRESH_BINARY_INV, 21, 5,
-    )
-    rects = _extract_internal_rects(adaptive_binary, gray, px_per_mm, mat_back)
-    return {"rects": rects}
+        sx, sy, sw, sh = cv2.boundingRect(sc)
+        sx_orig = bx + sx
+        sy_orig = by + sy
+
+        # 3. 用相似三角形公式估算物理尺寸
+        #     实物宽度 / 距离 = 像素宽度 / fx  →  实物宽度 = 像素宽度 × 距离 / fx
+        width_mm = None
+        height_mm = None
+        if pose is not None and pose.get("z_mm", 0) > 0:
+            width_mm = (sw * pose["z_mm"]) / CAMERA_FX
+            height_mm = (sh * pose["z_mm"]) / CAMERA_FY
+
+        shape_type = "tri" if n_vertices == 3 else "rect"
+
+        shapes.append({
+            "type": shape_type,
+            "bbox": (sx_orig, sy_orig, sw, sh),
+            "width_mm": width_mm,
+            "height_mm": height_mm,
+        })
+
+    return {"shapes": shapes} if shapes else None
 
 
 def update_rescue_schedule(miss_streak, cooldown, opencv_valid, yolo_enabled):
@@ -951,18 +865,22 @@ class FindRectCircle:
 
         # 内部图形测量
         if measurements is not None:
-            for rect in measurements.get("rects", []):
-                corners = rect["orig_corners"]
-                for i in range(4):
-                    x1, y1 = corners[i]
-                    x2, y2 = corners[(i + 1) % 4]
-                    img.draw_line(x1, y1, x2, y2, image.COLOR_RED, thickness=2)
-                img.draw_string(
-                    2, line_y,
-                    "W:{:.1f} H:{:.1f}mm".format(rect["a_mm"], rect["b_mm"]),
-                    image.COLOR_RED, scale=1.2, thickness=2,
-                )
-                line_y += 20
+            for shape in measurements.get("shapes", []):
+                sx, sy, sw, sh = shape["bbox"]
+                # 参考代码风格：直接画 bounding rect
+                img.draw_rect(sx, sy, sw, sh,
+                              image.Color.from_rgb(255, 0, 0), 2)
+                shape_name = "tri" if shape["type"] == "tri" else "rect"
+                label = "{}".format(shape_name)
+                w = shape.get("width_mm")
+                h = shape.get("height_mm")
+                if w is not None and h is not None:
+                    label += " {:.1f}x{:.1f}mm".format(w, h)
+                elif w is not None:
+                    label += " w={:.1f}mm".format(w)
+                img.draw_string(sx, sy - 15, label,
+                                image.Color.from_rgb(255, 0, 0),
+                                scale=1.2, thickness=2)
 
         self.disp.show(img)
 
@@ -1027,7 +945,7 @@ class FindRectCircle:
         pose = self._update_pose_filter(raw_pose)
 
         measurements = (
-            measure_internal_shapes(frame_bgr, points)
+            measure_internal_shapes(frame_bgr, points, raw_pose)
             if points is not None
             else None
         )
