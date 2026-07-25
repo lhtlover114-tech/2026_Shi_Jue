@@ -957,8 +957,8 @@ class FindRectCircle:
                     label = "tri"
                     sides = shape.get("sides_mm")
                     if sides:
-                        label += " a={:.1f} b={:.1f} c={:.1f}mm".format(
-                            sides[0], sides[1], sides[2])
+                        label += " a={:.1f}mm".format(
+                            sides[0])
                     # 标签放在三角形最上方顶点之上
                     top_y = min(v[1] for v in verts)
                     top_x = sum(v[0] for v in verts) // 3
@@ -974,7 +974,7 @@ class FindRectCircle:
                     w = shape.get("width_mm")
                     h = shape.get("height_mm")
                     if w is not None and h is not None:
-                        label += " {:.1f}x{:.1f}mm".format(w, h)
+                        label += " {:.1f}mm".format(w)
                     elif w is not None:
                         label += " w={:.1f}mm".format(w)
                     img.draw_string(sx, sy - 15, label,
