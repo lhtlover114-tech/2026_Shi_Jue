@@ -53,6 +53,8 @@ class LineFollower:
     # --- find_blobs 加速 ---
     X_STRIDE = 2                  # 水平跳像素采样 (1=不跳, 2=隔一个采一个)
     Y_STRIDE = 1                  # 垂直跳像素采样
+    DYNAMIC_ROI = True            # 动态ROI：下一帧只在上一帧位置附近搜索（加速+防干扰）
+    ROI_MARGIN = 50               # 动态ROI水平窗口半径(px)，黑线左右各留50px
 
     # --- 调试 ---
     DEBUG = True
@@ -129,7 +131,8 @@ class LineFollower:
 
     def _find_blob_in_strip(self, img, y_center, strip_index):
         """
-        在指定条带内寻找黑线 blob
+        在指定条带内寻找黑线 blob。
+        支持动态 ROI：如果有上一帧位置记录，先在窄窗口搜索；找不到再退回全宽。
         参数:
             img: maix.image.Image
             y_center: 条带中心 Y 坐标
@@ -144,50 +147,56 @@ class LineFollower:
         if h <= 0:
             return None
 
-        roi = [0, y0, img.width(), h]
-
-        # LAB 阈值: 亮度 L 在 0~THRESHOLD → 黑色, AB 全通过
         ths = [[0, self.THRESHOLD, -128, 127, -128, 127]]
 
-        try:
-            blobs = img.find_blobs(
-                ths,
-                roi=roi,
-                x_stride=self.X_STRIDE,
-                y_stride=self.Y_STRIDE,
-                area_threshold=self.MIN_BLOB_AREA,
-                pixels_threshold=self.MIN_BLOB_AREA,
-                merge=True,
-            )
-        except Exception:
-            return None
+        def _search(roi):
+            """在给定 ROI 内执行 find_blobs 并返回过滤后的有效列表"""
+            try:
+                blobs = img.find_blobs(
+                    ths, roi=roi,
+                    x_stride=self.X_STRIDE, y_stride=self.Y_STRIDE,
+                    area_threshold=self.MIN_BLOB_AREA,
+                    pixels_threshold=self.MIN_BLOB_AREA,
+                    merge=True,# margin=3,
+                )
+            except Exception:
+                return []
+            if not blobs:
+                return []
+            # 宽度过滤
+            return [b for b in blobs
+                    if self.MIN_BLOB_WIDTH <= b.w() <= self.MAX_BLOB_WIDTH]
 
-        if not blobs:
-            return None
-
-        # 过滤：宽度在合理范围内
-        valid = []
-        for b in blobs:
-            bw = b.w()
-            if self.MIN_BLOB_WIDTH <= bw <= self.MAX_BLOB_WIDTH:
-                valid.append(b)
-
-        if not valid:
-            return None
-
-        # 选择最优 blob
-        if len(valid) == 1:
-            # 只有一个候选 → 直接返回
-            best = valid[0]
-        else:
-            # 2 个及以上候选 → 优先选离上一帧同条带位置最近的，避免跳变
+        # --- 第一遍：动态窄窗口 ---
+        if self.DYNAMIC_ROI:
             last_cx = self._last_strip_cx.get(strip_index, None)
             if last_cx is not None:
-                best = min(valid, key=lambda b: abs(b.cx() - last_cx))
-            else:
-                # 没有历史记录（首帧或条带重建后）→ 选面积最大的
-                best = max(valid, key=lambda b: b.area())
-        return best
+                x0 = max(0, int(last_cx) - self.ROI_MARGIN)
+                x1 = min(img.width(), int(last_cx) + self.ROI_MARGIN)
+                narrow_roi = [x0, y0, x1 - x0, h]
+                valid = _search(narrow_roi)
+                if valid:
+                    return self._select_best(valid, strip_index)
+
+        # --- 第二遍：全宽搜索（保底） ---
+        full_roi = [0, y0, img.width(), h]
+        valid = _search(full_roi)
+        if not valid:
+            return None
+        return self._select_best(valid, strip_index)
+
+    def _select_best(self, valid, strip_index):
+        """
+        从多个候选 blob 中选择最优的一个：
+        - 只有1个 → 直接返回
+        - 2个及以上 → 优先选离上一帧位置最近的（防跳变）
+        """
+        if len(valid) == 1:
+            return valid[0]
+        last_cx = self._last_strip_cx.get(strip_index, None)
+        if last_cx is not None:
+            return min(valid, key=lambda b: abs(b.cx() - last_cx))
+        return max(valid, key=lambda b: b.area())
 
     def _detect_all_strips(self, img):
         """
