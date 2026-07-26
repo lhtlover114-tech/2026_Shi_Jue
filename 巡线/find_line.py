@@ -51,7 +51,7 @@ class LineFollower:
     SMOOTH_FACTOR = 0.5           # 低通滤波 (0=不过滤, 越大越平滑但响应越慢)
 
     # --- find_blobs 加速 ---
-    X_STRIDE = 2                  # 水平跳像素采样 (1=不跳, 2=隔一个采一个)
+    X_STRIDE = 2                  # 水平跳像素采样 (1=不跳, 2=隔一个采一个) 水平隔列采样，计算量减半
     Y_STRIDE = 1                  # 垂直跳像素采样
     DYNAMIC_ROI = True            # 动态ROI：下一帧只在上一帧位置附近搜索（加速+防干扰）
     ROI_MARGIN = 50               # 动态ROI水平窗口半径(px)，黑线左右各留50px
@@ -84,14 +84,13 @@ class LineFollower:
         self.cam = camera.Camera(width, height, buff_num=1)
         self.disp = display.Display()
 
-        self._t_frame = time.ticks_ms()
-
     # ==================== 参数更新接口 ====================
 
     def _rebuild_strips(self):
         """根据当前参数重建条带坐标和权重表"""
         self._strip_y = []
         self._weights = []
+        self._last_strip_cx = {}       # 条带位置变了，清空历史
 
         if self.NUM_STRIPS == 1:
             self._strip_y = [(self.ROI_TOP + self.ROI_BOTTOM) // 2]
@@ -157,7 +156,7 @@ class LineFollower:
                     x_stride=self.X_STRIDE, y_stride=self.Y_STRIDE,
                     area_threshold=self.MIN_BLOB_AREA,
                     pixels_threshold=self.MIN_BLOB_AREA,
-                    merge=True,# margin=3,
+                    merge=True, margin=3,
                 )
             except Exception:
                 return []
@@ -243,8 +242,6 @@ class LineFollower:
             'fps': float,         # 帧率
         }
         """
-        t0 = time.ticks_ms()
-
         # 1. 读摄像头
         img = self.cam.read()
 
@@ -327,18 +324,14 @@ class LineFollower:
                 x1, y1 = int(self.last_points[i+1][0]), self.last_points[i+1][1]
                 img.draw_line(x0, y0, x1, y1, image.COLOR_RED, thickness=2)
 
-        # # 画加权平均线（红色粗实线）
-        # img.draw_line(cx_int, self.ROI_TOP, cx_int, self.ROI_BOTTOM,
-        #               image.COLOR_RED, thickness=2)
+        # 画画面中心线（蓝色参考线）
+        img.draw_line(mid, self.ROI_TOP, mid, self.ROI_BOTTOM,
+                      image.COLOR_BLUE, thickness=1)
 
-        # # 画画面中心线（蓝色参考线）
-        # img.draw_line(mid, self.ROI_TOP, mid, self.ROI_BOTTOM,
-        #               image.COLOR_BLUE, thickness=1)
-
-        # # 画误差向量（从画面中心到线中心，黄色）
-        # img.draw_line(mid, (self.ROI_TOP + self.ROI_BOTTOM) // 2,
-        #               cx_int, (self.ROI_TOP + self.ROI_BOTTOM) // 2,
-        #               image.COLOR_YELLOW, thickness=2)
+        # 画误差向量（从画面中心到线中心，黄色），直观显示偏差大小和方向
+        mid_y = (self.ROI_TOP + self.ROI_BOTTOM) // 2
+        img.draw_line(mid, mid_y, cx_int, mid_y,
+                      image.COLOR_YELLOW, thickness=2)
 
         # 信息文字（黑底白字增强可读性）
         info_lines = [
