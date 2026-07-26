@@ -4,7 +4,7 @@ MaixCAM2 (MaixPy v4)
 白底黑线赛道
 
 核心思路：
-  在图像纵向划分 N 个水平条带(ROI),每个条带用 find_blobs() 检测黑线中心，
+  在图像纵向划分 N 个水平条带（ROI），每个条带用 find_blobs() 检测黑线中心，
   条带越靠近画面底部（近机器人端）权重越大，加权平均得到平滑的线位置。
 
 算法优势：
@@ -76,6 +76,7 @@ class LineFollower:
         self.last_center_x = self._center_x
         self.last_points = []          # 上一帧检测点 [(cx, cy, weight), ...]
         self.fps = 0.0
+        self._last_strip_cx = {}       # {strip_index: cx} 记录每个条带上一次检测到的线中心
 
         # 初始化硬件
         self.cam = camera.Camera(width, height, buff_num=1)
@@ -126,12 +127,13 @@ class LineFollower:
 
     # ==================== 核心检测 ====================
 
-    def _find_blob_in_strip(self, img, y_center):
+    def _find_blob_in_strip(self, img, y_center, strip_index):
         """
         在指定条带内寻找黑线 blob
         参数:
             img: maix.image.Image
             y_center: 条带中心 Y 坐标
+            strip_index: 条带索引（用于查找上一帧位置）
         返回:
             找到的 blob 对象，或 None
         """
@@ -173,8 +175,18 @@ class LineFollower:
         if not valid:
             return None
 
-        # 多个候选 → 选面积最大的（最可能是主线）
-        best = max(valid, key=lambda b: b.area())
+        # 选择最优 blob
+        if len(valid) == 1:
+            # 只有一个候选 → 直接返回
+            best = valid[0]
+        else:
+            # 2 个及以上候选 → 优先选离上一帧同条带位置最近的，避免跳变
+            last_cx = self._last_strip_cx.get(strip_index, None)
+            if last_cx is not None:
+                best = min(valid, key=lambda b: abs(b.cx() - last_cx))
+            else:
+                # 没有历史记录（首帧或条带重建后）→ 选面积最大的
+                best = max(valid, key=lambda b: b.area())
         return best
 
     def _detect_all_strips(self, img):
@@ -184,9 +196,10 @@ class LineFollower:
               rect_* 是 blob 在原图中的外接矩形，用于调试框选
         """
         centers = []
-        for y, w in zip(self._strip_y, self._weights):
-            blob = self._find_blob_in_strip(img, y)
+        for i, (y, w) in enumerate(zip(self._strip_y, self._weights)):
+            blob = self._find_blob_in_strip(img, y, i)
             if blob is not None:
+                self._last_strip_cx[i] = blob.cx()  # 记住本帧位置，供下一帧参考
                 centers.append((blob.cx(), y, w,
                                 blob.x(), blob.y(), blob.w(), blob.h()))
         return centers
