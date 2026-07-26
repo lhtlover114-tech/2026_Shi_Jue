@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 巡线 UART 通信模块：MaixCAM2 ↔ MSPM0
-复用在用的 32 字节 V2 帧协议，460800 baud / 200Hz。
+复用在用的 32 字节 V2 帧协议，460800 baud / 100Hz。
 
 架构：
   - TX 线程（独立）：每 5ms 发送最新巡线数据，不阻塞视觉主循环
@@ -97,12 +97,17 @@ class LineFollowLink:
 
     使用方法:
         link = LineFollowLink()
-        link.start()                          # 启动 TX 线程
+        link.DEBUG_PRINT = True   # 开启串口打印发送数据
+        link.start()              # 启动 TX 线程
 
         while True:
             result = follower.process()
             link.publish_line_data(result['error'], result['confidence'])
     """
+
+    # 调试打印（可运行时切换）
+    DEBUG_PRINT = False            # 是否在控制台打印每次发送的数据
+    DEBUG_PRINT_INTERVAL = 40     # 每 N 帧打印一次（200Hz 下 40=200ms）
 
     def __init__(
         self,
@@ -110,7 +115,7 @@ class LineFollowLink:
         rx_pin="A22",
         device="/dev/ttyS4",
         baudrate=460800,
-        period_us=5000,          # 200Hz 发送周期
+        period_us=10000,          # 100Hz 发送周期 够用想更快可改为 5000 (200Hz)
         enable_rx=False,          # 是否启用接收（双向通信）
     ):
         self._tx_pin = tx_pin
@@ -266,6 +271,14 @@ class LineFollowLink:
 
             sent_count += 1
             packet_sequence = (packet_sequence + 1) & 0xFFFF
+
+            # 调试打印（每 N 帧输出一次，避免刷屏）
+            if self.DEBUG_PRINT and sent_count % self.DEBUG_PRINT_INTERVAL == 0:
+                valid = "V" if flags & FLAG_TARGET_VALID else "X"
+                print(f"[link] seq={packet_sequence:5d}  "
+                      f"x_err={x_error:+5d}  "
+                      f"flags={flags:#06x}({valid})  "
+                      f"frm={vision_frame}")
 
             if written != FRAME_SIZE:
                 write_error_count += 1

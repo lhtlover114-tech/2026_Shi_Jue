@@ -51,11 +51,12 @@ def run(debug=True, width=320, height=240):
         rx_pin="A22",
         device="/dev/ttyS4",
         baudrate=460800,
-        period_us=5000,         # 200Hz
+        period_us=10000,         # 100Hz 够用想更快可改为 5000 (200Hz)
         enable_rx=False,         # 暂不需要 MSPM0 回传
     )
+    link.DEBUG_PRINT = False  # 开启控制台打印发送数据（调试用，正式跑可关）
     link.start()
-    print("[main] UART link started (460800 baud, 200Hz)")
+    print("[main] UART link started (460800 baud, 100Hz)")
 
     # --- 3. 接收回调示例（如果 enable_rx=True 时使用） ---
     def on_mspm0_data(frame):
