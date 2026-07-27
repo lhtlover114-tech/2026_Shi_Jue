@@ -19,6 +19,8 @@ MaixCAM2 (MaixPy v4)
 
 from maix import camera, display, image, app, time
 
+from line_metrics import compute_region_raw_errors
+
 
 class LineFollower:
     """多点变权重巡线检测器"""
@@ -30,6 +32,7 @@ class LineFollower:
     STRIP_HEIGHT = 10            # 每条带高度(px)，太小检不出线，太大失去垂直精度
     ROI_TOP = 30                 # 采样区域顶部 Y（跳过远处无用区域）
     ROI_BOTTOM = 230             # 采样区域底部 Y（近机器人端）
+    REGION_STRIPS = 5            # 远区取顶部5条，近区取底部5条
 
     # --- 黑色阈值 ---
     # LAB 色彩空间: L(亮度) < THRESHOLD 视为黑色, AB 不限
@@ -75,6 +78,8 @@ class LineFollower:
 
         # 状态变量
         self.last_error = 0.0
+        self.last_near_error = 0.0
+        self.last_far_error = 0.0
         self.last_center_x = self._center_x
         self.last_points = []          # 上一帧检测点 [(cx, cy, weight), ...]
         self.fps = 0.0
@@ -229,13 +234,22 @@ class LineFollower:
         confidence = len(centers) / self.NUM_STRIPS
         return weighted_x, confidence
 
+    def _smooth_region_error(self, raw_error, previous_error):
+        """独立平滑近区/远区误差；本区无检测时保持上一结果。"""
+        if raw_error is None:
+            return previous_error
+        return ((1 - self.SMOOTH_FACTOR) * raw_error
+                + self.SMOOTH_FACTOR * previous_error)
+
     # ==================== 主处理 ====================
 
     def process(self):
         """
         处理一帧图像
         返回: dict {
-            'error': float,       # 线中心相对画面中心的 X 偏移 (px)
+            'error': float,       # 整体加权误差（保留兼容）
+            'near_error': float,  # 底部5条带的近处误差 (px)
+            'far_error': float,   # 顶部5条带的远处误差 (px)
             'confidence': float,  # 0.0~1.0, 有效检测点比例
             'center_x': float,    # 加权线中心 X 坐标
             'points': list,       # [(cx, cy, weight), ...] 调试用
@@ -248,36 +262,62 @@ class LineFollower:
         # 2. 多点检测
         centers = self._detect_all_strips(img)
 
-        # 3. 加权平均
+        # 3. 整体加权平均 + 固定近远区域误差
         weighted_x, confidence = self._weighted_average(centers)
+        raw_near_error, raw_far_error = compute_region_raw_errors(
+            centers,
+            self._center_x,
+            self._strip_y,
+            self.REGION_STRIPS,
+        )
 
-        # 4. 误差计算 + 滤波
+        # 4. 整体误差计算 + 滤波（保留原行为）
         if weighted_x is None:
             error = self.last_error
             weighted_x = self.last_center_x
         else:
             raw_error = weighted_x - self._center_x
-            # 一阶低通滤波
-            error = (1 - self.SMOOTH_FACTOR) * raw_error + self.SMOOTH_FACTOR * self.last_error
+            error = ((1 - self.SMOOTH_FACTOR) * raw_error
+                     + self.SMOOTH_FACTOR * self.last_error)
             self.last_error = error
             self.last_center_x = weighted_x
 
+        # 5. 近区和远区分别滤波；某区域本帧缺失时保持该区域历史值
+        near_error = self._smooth_region_error(
+            raw_near_error, self.last_near_error
+        )
+        far_error = self._smooth_region_error(
+            raw_far_error, self.last_far_error
+        )
+        if raw_near_error is not None:
+            self.last_near_error = near_error
+        if raw_far_error is not None:
+            self.last_far_error = far_error
+
         self.last_points = centers
 
-        # 5. FPS（使用 MaixPy 内置 time.fps()，自动跟踪帧率）
+        # 6. FPS（使用 MaixPy 内置 time.fps()，自动跟踪帧率）
         self.fps = time.fps()
 
-        # 6. 调试
+        # 7. 调试
         if self.DEBUG:
-            self._draw_debug(img, weighted_x, error, confidence)
+            self._draw_debug(
+                img, weighted_x, error, near_error, far_error, confidence
+            )
 
         self.disp.show(img)
 
         if self.DEBUG_PRINT:
-            print(f"err:{error:+.1f} conf:{confidence:.2f} fps:{self.fps:.0f}")
+            print(
+                f"err:{error:+.1f} near:{near_error:+.1f} "
+                f"far:{far_error:+.1f} conf:{confidence:.2f} "
+                f"fps:{self.fps:.0f}"
+            )
 
         return {
             'error': error,
+            'near_error': near_error,
+            'far_error': far_error,
             'confidence': confidence,
             'center_x': weighted_x,
             'points': centers,
@@ -286,14 +326,16 @@ class LineFollower:
 
     # ==================== 调试绘制 ====================
 
-    def _draw_debug(self, img, weighted_x, error, confidence):
+    def _draw_debug(
+        self, img, weighted_x, error, near_error, far_error, confidence
+    ):
         """在图像上叠加调试信息"""
         img_w = img.width()
         img_h = img.height()
         cx_int = int(weighted_x)
         mid = int(self._center_x)
 
-        #画条带边界（可选）
+        # 画条带边界（可选）
         if self.DEBUG_SHOW_STRIPS:
             for y in self._strip_y:
                 half_h = self.STRIP_HEIGHT // 2
@@ -336,6 +378,8 @@ class LineFollower:
         # 信息文字（黑底白字增强可读性）
         info_lines = [
             f"err:{error:+.1f}",
+            f"near:{near_error:+.1f}",
+            f"far:{far_error:+.1f}",
             f"conf:{confidence:.2f}",
             f"fps:{self.fps:.0f}",
             f"mode:{self.WEIGHT_MODE}",
@@ -356,6 +400,7 @@ def main():
     print("  视觉巡线 - 多点变权重")
     print(f"  分辨率 : {follower._img_w}x{follower._img_h}")
     print(f"  采样条带: {follower.NUM_STRIPS}")
+    print(f"  近远条带: {follower.REGION_STRIPS}")
     print(f"  权重模式: {follower.WEIGHT_MODE}")
     print(f"  黑色阈值: {follower.THRESHOLD}")
     print(f"  平滑系数: {follower.SMOOTH_FACTOR}")
@@ -368,7 +413,8 @@ def main():
 
     while not app.need_exit():
         result = follower.process()
-        # result['error'] 可直接送入 PID 控制器
+        # result['near_error'] 用于近场精确纠偏
+        # result['far_error'] 用于远场弯道预瞄
         # result['confidence'] 可用于判断是否丢失线
 
 
