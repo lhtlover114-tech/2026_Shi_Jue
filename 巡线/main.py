@@ -39,6 +39,7 @@ def run(debug=True, width=320, height=240):
     print("  巡线系统启动")
     print(f"  分辨率   : {follower._img_w}x{follower._img_h}")
     print(f"  采样条带 : {follower.NUM_STRIPS}")
+    print(f"  近远条带 : {follower.REGION_STRIPS}")
     print(f"  权重模式 : {follower.WEIGHT_MODE}")
     print(f"  黑色阈值 : {follower.THRESHOLD}")
     print(f"  平滑系数 : {follower.SMOOTH_FACTOR}")
@@ -75,11 +76,17 @@ def run(debug=True, width=320, height=240):
     while not app.need_exit():
         # 视觉检测（一帧的处理时间决定了帧率）
         result = follower.process()
-        # result: {'error', 'confidence', 'center_x', 'points', 'fps'}
+        # result: {'error', 'near_error', 'far_error',
+        #          'confidence', 'center_x', 'points', 'fps'}
 
         # 发布到 MSPM0（瞬时返回，不阻塞视觉）
         if result['confidence'] >= 0.3:
-            link.publish_line_data(result['error'], result['confidence'], result['fps'])
+            link.publish_line_data(
+                near_error=result['near_error'],
+                far_error=result['far_error'],
+                confidence=result['confidence'],
+                fps=result['fps'],
+            )
         else:
             link.publish_line_lost(result['fps'])
 
