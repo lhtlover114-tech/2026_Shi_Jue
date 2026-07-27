@@ -4,9 +4,13 @@
 复用在用的 32 字节 V2 帧协议，460800 baud / 100Hz。
 
 架构：
-  - TX 线程（独立）：每 5ms 发送最新巡线数据，不阻塞视觉主循环
+  - TX 线程（独立）：每 period_us 发送最新巡线数据，不阻塞视觉主循环
   - 主线程（视觉） ：调用 publish_line_data() 存入快照，瞬时返回
   - RX 线程（可选）：监听 MSPM0 发来的指令（速度/模式切换等）
+
+巡线字段映射：
+  - x_error: near_error（近处条带误差）
+  - y_error: far_error（远处条带误差）
 
 引脚：
   UART4_TX → A21    连接 MSPM0 RX
@@ -26,7 +30,7 @@ FRAME_SIZE = 32
 CRC_DATA_SIZE = 30
 
 FLAG_TARGET_VALID = 1 << 0   # bit0: 巡线数据有效
-FLAG_IMU_VALID = 1 << 1     # bit1: IMU 数据有效（巡线暂不使用）
+FLAG_IMU_VALID = 1 << 1      # bit1: IMU 数据有效（巡线暂不使用）
 
 _FRAME_FORMAT = "<BBBBHHIhhhhhhhhH"
 
@@ -66,7 +70,11 @@ def build_frame(
     gyro_x_dps_x10=0, gyro_y_dps_x10=0, gyro_z_dps_x10=0,
     flags=0,
 ):
-    """生成 32 字节 V2 小端帧（IMU 字段巡线模式下默认填 0）"""
+    """
+    生成 32 字节 V2 小端帧。
+
+    巡线模式下 x_error=near_error，y_error=far_error，IMU 字段填 0。
+    """
     payload = struct.pack(
         _FRAME_FORMAT,
         FRAME_HEADER_0,
@@ -97,16 +105,20 @@ class LineFollowLink:
 
     使用方法:
         link = LineFollowLink()
-        link.DEBUG_PRINT = True   # 开启串口打印发送数据
-        link.start()              # 启动 TX 线程
+        link.DEBUG_PRINT = True
+        link.start()
 
         while True:
             result = follower.process()
-            link.publish_line_data(result['error'], result['confidence'])
+            link.publish_line_data(
+                near_error=result['near_error'],
+                far_error=result['far_error'],
+                confidence=result['confidence'],
+            )
     """
 
     # 调试打印（可运行时切换）
-    DEBUG_PRINT = False            # 是否在控制台打印每次发送的数据
+    DEBUG_PRINT = False           # 是否在控制台打印发送数据
     DEBUG_PRINT_INTERVAL = 40     # 每 N 帧打印一次（200Hz 下 40=200ms）
 
     def __init__(
@@ -115,7 +127,7 @@ class LineFollowLink:
         rx_pin="A22",
         device="/dev/ttyS4",
         baudrate=460800,
-        period_us=10000,          # 100Hz 发送周期 够用想更快可改为 5000 (200Hz)
+        period_us=10000,          # 100Hz 发送周期，改为5000即200Hz
         enable_rx=False,          # 是否启用接收（双向通信）
     ):
         self._tx_pin = tx_pin
@@ -127,7 +139,8 @@ class LineFollowLink:
 
         # 状态
         self._vision_frame = 0
-        self._target_snapshot = None    # (vision_frame, x_error, y_error, flags, fps)
+        # (vision_frame, near_error, far_error, flags, fps)
+        self._target_snapshot = None
         self._stats = (0, 0, 0)         # (sent, errors, skipped)
         self._started = False
         self._serial = None
@@ -181,14 +194,24 @@ class LineFollowLink:
 
     # ==================== 数据发布（主线程调用） ====================
 
-    def publish_line_data(self, error, confidence=1.0, fps=0.0):
+    def publish_line_data(
+        self,
+        near_error,
+        confidence=1.0,
+        fps=0.0,
+        far_error=0.0,
+    ):
         """
         发布最新巡线数据（主线程/视觉循环调用，瞬时返回）。
 
         参数:
-            error:      线偏移量 (px)，正=右偏, 负=左偏
-            confidence: 置信度 0.0~1.0，< 0.3 视为无效
+            near_error: 近处线偏移量 (px)，正=右偏, 负=左偏
+            confidence: 整体置信度 0.0~1.0，< 0.3 视为无效
             fps:        视觉帧率（调试用，不发送给 MSPM0）
+            far_error:  远处线偏移量 (px)，正=右偏, 负=左偏
+
+        为兼容旧调用，第二和第三个位置参数仍分别是 confidence、fps；
+        far_error 建议使用关键字参数传入。
         """
         if not self._started:
             raise RuntimeError("LineFollowLink.start() must be called first")
@@ -199,8 +222,8 @@ class LineFollowLink:
 
         self._target_snapshot = (
             self._vision_frame,
-            _clamp_int16(error),
-            0,      # y_error = 0（巡线不需要）
+            _clamp_int16(near_error),
+            _clamp_int16(far_error),
             flags,
             fps,    # 视觉帧率（仅调试打印用）
         )
@@ -234,7 +257,7 @@ class LineFollowLink:
         write_error_count = 0
         skipped_slot_count = 0
         next_deadline_us = self._time.ticks_us()
-        t_start_ms = self._time.ticks_ms()  # 记录启动时间，用于计算实际通信频率
+        t_start_ms = self._time.ticks_ms()  # 用于计算实际线程发送频率
 
         while not self._app.need_exit():
             # 等待到下一个发送时刻
@@ -248,20 +271,20 @@ class LineFollowLink:
             snapshot = self._target_snapshot
             if snapshot is None:
                 vision_frame = 0
-                x_error = 0
-                y_error = 0
+                near_error = 0
+                far_error = 0
                 flags = 0
                 visual_fps = 0.0
             else:
-                vision_frame, x_error, y_error, flags, visual_fps = snapshot
+                vision_frame, near_error, far_error, flags, visual_fps = snapshot
 
-            # 构建帧
+            # 构建帧：x_error=near_error, y_error=far_error
             frame = build_frame(
                 packet_sequence=packet_sequence,
                 vision_frame=vision_frame,
                 timestamp_ms=timestamp_ms,
-                x_error=x_error,
-                y_error=y_error,
+                x_error=near_error,
+                y_error=far_error,
                 flags=flags,
             )
 
@@ -278,12 +301,12 @@ class LineFollowLink:
 
             # 调试打印（每 N 帧输出一次，避免刷屏）
             if self.DEBUG_PRINT and sent_count % self.DEBUG_PRINT_INTERVAL == 0:
-                # 实际通信频率 = 已发送帧数 / 已用时间
                 elapsed_s = (self._time.ticks_ms() - t_start_ms) / 1000.0
                 comm_freq = sent_count / elapsed_s if elapsed_s > 0 else 0
                 valid = "V" if flags & FLAG_TARGET_VALID else "X"
                 print(f"[link] seq={packet_sequence:5d}  "
-                      f"x_err={x_error:+5d}  "
+                      f"near={near_error:+5d}  "
+                      f"far={far_error:+5d}  "
                       f"vis_fps={visual_fps:4.1f}  "
                       f"tx_freq={comm_freq:5.1f}Hz  "
                       f"flags={flags:#06x}({valid})  "
