@@ -54,7 +54,7 @@ def run(debug=True, width=320, height=240):
         period_us=10000,         # 100Hz 够用想更快可改为 5000 (200Hz)
         enable_rx=False,         # 暂不需要 MSPM0 回传
     )
-    link.DEBUG_PRINT = False  # 开启控制台打印发送数据（调试用，正式跑可关）
+    link.DEBUG_PRINT = True   # 开启控制台打印发送数据（调试用，正式跑可关）
     link.start()
     print("[main] UART link started (460800 baud, 100Hz)")
 
@@ -79,9 +79,9 @@ def run(debug=True, width=320, height=240):
 
         # 发布到 MSPM0（瞬时返回，不阻塞视觉）
         if result['confidence'] >= 0.3:
-            link.publish_line_data(result['error'], result['confidence'])
+            link.publish_line_data(result['error'], result['confidence'], result['fps'])
         else:
-            link.publish_line_lost()
+            link.publish_line_lost(result['fps'])
 
 
 if __name__ == "__main__":

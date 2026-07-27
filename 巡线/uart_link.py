@@ -127,7 +127,7 @@ class LineFollowLink:
 
         # 状态
         self._vision_frame = 0
-        self._target_snapshot = None    # (vision_frame, x_error, y_error, flags)
+        self._target_snapshot = None    # (vision_frame, x_error, y_error, flags, fps)
         self._stats = (0, 0, 0)         # (sent, errors, skipped)
         self._started = False
         self._serial = None
@@ -181,13 +181,14 @@ class LineFollowLink:
 
     # ==================== 数据发布（主线程调用） ====================
 
-    def publish_line_data(self, error, confidence=1.0):
+    def publish_line_data(self, error, confidence=1.0, fps=0.0):
         """
         发布最新巡线数据（主线程/视觉循环调用，瞬时返回）。
 
         参数:
             error:      线偏移量 (px)，正=右偏, 负=左偏
             confidence: 置信度 0.0~1.0，< 0.3 视为无效
+            fps:        视觉帧率（调试用，不发送给 MSPM0）
         """
         if not self._started:
             raise RuntimeError("LineFollowLink.start() must be called first")
@@ -201,12 +202,13 @@ class LineFollowLink:
             _clamp_int16(error),
             0,      # y_error = 0（巡线不需要）
             flags,
+            fps,    # 视觉帧率（仅调试打印用）
         )
 
-    def publish_line_lost(self):
+    def publish_line_lost(self, fps=0.0):
         """显式告知 MSPM0 线已丢失（FLAG_TARGET_VALID = 0）"""
         self._vision_frame = (self._vision_frame + 1) & 0xFFFF
-        self._target_snapshot = (self._vision_frame, 0, 0, 0)
+        self._target_snapshot = (self._vision_frame, 0, 0, 0, fps)
 
     # ==================== RX 回调 ====================
 
@@ -232,6 +234,7 @@ class LineFollowLink:
         write_error_count = 0
         skipped_slot_count = 0
         next_deadline_us = self._time.ticks_us()
+        t_start_ms = self._time.ticks_ms()  # 记录启动时间，用于计算实际通信频率
 
         while not self._app.need_exit():
             # 等待到下一个发送时刻
@@ -248,8 +251,9 @@ class LineFollowLink:
                 x_error = 0
                 y_error = 0
                 flags = 0
+                visual_fps = 0.0
             else:
-                vision_frame, x_error, y_error, flags = snapshot
+                vision_frame, x_error, y_error, flags, visual_fps = snapshot
 
             # 构建帧
             frame = build_frame(
@@ -274,9 +278,14 @@ class LineFollowLink:
 
             # 调试打印（每 N 帧输出一次，避免刷屏）
             if self.DEBUG_PRINT and sent_count % self.DEBUG_PRINT_INTERVAL == 0:
+                # 实际通信频率 = 已发送帧数 / 已用时间
+                elapsed_s = (self._time.ticks_ms() - t_start_ms) / 1000.0
+                comm_freq = sent_count / elapsed_s if elapsed_s > 0 else 0
                 valid = "V" if flags & FLAG_TARGET_VALID else "X"
                 print(f"[link] seq={packet_sequence:5d}  "
                       f"x_err={x_error:+5d}  "
+                      f"vis_fps={visual_fps:4.1f}  "
+                      f"tx_freq={comm_freq:5.1f}Hz  "
                       f"flags={flags:#06x}({valid})  "
                       f"frm={vision_frame}")
 
